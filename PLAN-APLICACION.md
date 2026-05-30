@@ -7,19 +7,58 @@ Los modelos se basan en la documentación de la API Gateway de ecollect (Payment
 
 | Modelo Original (ecollect) | Modelo SDK (Semántico) | Descripción | Campos Principales |
 |----------------------------|-------------------------|-------------|---------------------|
-| PaymentRequest | PaymentIntent | Representa la intención de pago con detalles de transacción. | amount (decimal), currency (string), description (string), merchantTransactionId (string), etyCode (string), srvCode (string), referenceArray (array<string>: [documentNumber, otherDoc, name, address, phone, email]), paymentInfoArray (array<object>: atributos adicionales como PaymentSystem, Usermail), tokenInfoArray (array<object>: datos del token como TokenId, SecureCode, Installments) |
-| PersonType | Customer | Información del cliente o beneficiario. | firstName (string), lastName (string), email (string), phone (string), documentType (enum: ID/PASSPORT), documentNumber (string) |
-| ChannelInfoType | PaymentChannel | Configuración del canal de pago (e.g., banco, método). | channelId (string), channelName (string), isActive (boolean), supportedCurrencies (array<string>) |
-| SavedCard (nuevo) | SavedCard | Tarjeta guardada con token truncado para gestión segura. | tokenId (string), truncatedNumber (string, e.g., "****1234"), expiryMonth (int), expiryYear (int), cardholderName (string), country (string) |
+| PaymentRequest | PaymentIntent | Representa la intención de pago con detalles de transacción. | amount (decimal), currency (string), description (string), merchantTransactionId (string), etyCode (string), srvCode (string), referenceArray (array<string>), paymentInfoArray, tokenInfoArray |
+| PersonType | Customer | Información del cliente o beneficiario. | fullName (string), email (string), phone (string), mobileCountryCode (string), mobileNumber (string), documentType (enum), documentNumber (string), country (string) |
+| ChannelInfoType | PaymentChannel | Configuración del canal de pago. | channelId (string), channelName (string), isActive (boolean), supportedCurrencies (array<string>) |
+| SavedCard (nuevo) | SavedCard | Tarjeta guardada con token truncado para gestión segura. | tokenId (string), bin4 (string), last4 (string), maskedCard (string), fiCode (string), fiName (string), brandImageUrl (string), tokenStatus ('ACTIVE'\|'VERIFY'\|'EXPIRED'), lifetimeSecs (int) |
+| TransactionResult (nuevo) | TransactionResult | Resultado completo de una transacción. | ticketId (int), trazabilityCode (string), tranState (TranState), transValue (decimal), transVatValue (decimal), payCurrency (string), currencyRate (decimal?), bankProcessDate (DateTime), fiCode (string), fiName (string), paymentSystem (string), tranCycle (string), invoice (string?), referenceArray (array<string>), merchantId (string?), terminalNumber (string?), authResponse (string?) |
 
 ### Mapeo de Campos Técnicos a Semánticos
 - `PaymentRequest.amount` → `PaymentIntent.totalAmount` (decimal, con validación de rango).
-- `PersonType.firstName` → `Customer.givenName` (string, normalizado a UTF-8).
 - `ChannelInfoType.channelId` → `PaymentChannel.identifier` (string, único y no expuesto en logs).
-- Campos opcionales se mapean con defaults seguros (e.g., `currency` default a "USD" si no especificado).
-- `SavedCard` (de ecollect tokens) → `SavedCard.tokenId` (string, generado por ecollect); `truncatedNumber` (últimos 4 dígitos, e.g., "****1234"); campos adicionales por país (e.g., documentNumber para Colombia).
+- Campos opcionales se mapean con defaults seguros (e.g., `currency` default a "COP" si no especificado para Colombia).
+- `SavedCard.bin4` + `FindKeys` de `getPaymentSystem` → detección automática de franquicia sin selección manual.
+- `TransactionResult.trazabilityCode` → campo de conciliación contable, diferente al `ticketId`. Exponer siempre en el resultado.
+- `TransactionResult.bankProcessDate` → usada para calcular el retry window de webhooks (máx. 60 min desde esta fecha).
+- `TransactionResult.currencyRate` → informativo cuando `SrvCurrency ≠ PayCurrency`; exponer en el resultado para transparencia.
+- `TransactionResult.authResponse` → mensaje interno del autorizador. Exponer solo en modo DEBUG; **nunca mostrar al usuario final**.
 - `EtyCode` → `Merchant.etyCode` (string, identificador único de comercio, asociado a merchant number/terminal ID/category).
 - `SrvCode` → `PaymentIntent.srvCode` (string, servicio específico; permite múltiples servicios por comercio).
+
+### Tabla de AttributeCodes de referencia (PaymentInfoType)
+| Code | Nombre | Uso | Dirección |
+|---|---|---|---|
+| 0 | CardNumber | Número tarjeta | Request (tokenCommand) |
+| 1 | TokenId | Token tarjeta | Request/Response |
+| 2 | PaymentSystem | Código medio pago | Request/Response |
+| 3 | SecureCode | CVV2/CVC | Request |
+| 4 | ExpirationDate | Vencimiento MM/YYYY | Request |
+| 5 | Installments | Cuotas (Colombia) | Request |
+| 6 | Usermail | Email pagador | Request/Response |
+| 7 | MobileCountryCode | Código país móvil (ej: 57, 52, 1) | Request |
+| 8 | MobileNumber | Teléfono móvil pagador | Request |
+| 9 | FiCode | Código franquicia ecollect | Request/Response |
+| 10 | FiName | Nombre franquicia (VISA, MC, AMEX) | Response |
+| 11 | Last4 | Últimos 4 dígitos | Response |
+| 12 | MaskedCard | Tarjeta enmascarada (VISA 5404****1234) | Response |
+| 13 | BrandImageUrl | URL logo franquicia | Response |
+| 14 | MerchanId | Código comercio red autorizadora | Response (auditoría) |
+| 15 | TerminalNumber | Código terminal red autorizadora | Response (auditoría) |
+| 16 | AuthResponse | Mensaje autorizador (interno, no mostrar a usuario) | Response |
+| 17 | CardHolderName | Nombre tarjetahabiente | Request |
+| 18 | CardHolderIdType | Tipo documento (CC/NIT/CI/RFC/etc.) | Request |
+| 19 | CardHolderId | Número documento | Request |
+| 20 | CardIssueCountry | País emisor tarjeta (ISO 3166-1 alpha-2) | Request |
+| 21 | CardIssueBank | Nombre banco emisor | Request (requerido en tokenCommand GET/SAVE/HOLD) |
+| 22 | AccountType | 0=Crédito (default), 1=Débito | Request (requerido en tokenCommand GET/SAVE/HOLD) |
+| 23 | IPAddress | IP pública del dispositivo (anti-fraude) | Request |
+| 24 | DeviceFingerPrint | Huella única del dispositivo (anti-fraude) | Request |
+| 25 | OneTimePassword | Clave dinámica OTP | Request (si requerida) / Response (señal de que se requiere) |
+| 26 | MerchantTransactionId | ID único de transacción del comercio (idempotencia) | Request |
+| 28 | DevValue | Base devolución IVA — Colombia | Request |
+| 29 | FailCode | Código falla detallado cuando TranState=FAILED | Response |
+| 30 | Bin4 | Primeros 4 dígitos tarjeta | Response (queryToken) |
+| 34 | UserType | Tipo usuario PSE: 0=Natural, 1=Jurídica (Colombia) | Request |
 
 ### Mapeo de Métodos a Endpoints ecollect
 - `createSessionToken` → getSessionToken (payload: {EntityCode, ApiKey})
@@ -38,6 +77,37 @@ Los modelos se basan en la documentación de la API Gateway de ecollect (Payment
 - **Seguridad**: No persistir en disco; usar HTTPS-only cookies para browser.
 
 ## Arquitectura Multi-lenguaje (5 SDKs)
+
+### Decisión: Monorepo
+
+Se adopta **monorepo** para todos los SDKs bajo un único repositorio Git.
+
+**Razones:**
+- Un solo contrato técnico: cambios en la API de ecollect se propagan a todos los SDKs en un único PR.
+- CI/CD unificado: un pipeline detecta qué SDK cambió y ejecuta solo sus tests y publicación.
+- Versioning coordinado: se puede mantener paridad de versiones entre lenguajes (e.g., v1.2.0 en todos) o versionado independiente, ambos viables desde un monorepo.
+- Documentación centralizada y ejemplos cross-lenguaje en el mismo lugar.
+
+**Estructura de carpetas:**
+```
+ecollect-sdk/
+├── packages/
+│   ├── typescript/       # npm: ecollect-sdk
+│   ├── php/              # Composer: ecollect/sdk
+│   ├── kotlin/           # Maven: com.ecollect:sdk
+│   ├── swift/            # SPM: EcollectSDK
+│   └── python/           # PyPI: ecollect-sdk
+├── docs/                 # Documentación multi-lenguaje
+├── examples/             # Apps de ejemplo por plataforma
+│   ├── woocommerce/
+│   ├── prestashop/
+│   ├── shopify/
+│   ├── android/
+│   └── ios/
+└── .github/workflows/    # CI por SDK (path-based triggers)
+```
+
+**CI/CD path-based:** Solo se testea y publica el SDK que cambió, usando `paths:` filters en GitHub Actions.
 
 ### Plataformas objetivo
 | SDK | Plataformas | Distribución |
@@ -94,24 +164,46 @@ payment = client.payments.process(payment_intent)
 ### Consideraciones especiales por plataforma
 
 #### PHP — WooCommerce y PrestaShop
-- Publicar como plugin oficial en WordPress.org Marketplace y PrestaShop Addons.
-- Soportar PHP 7.4+ (mínimo requerido por WooCommerce actual).
+- Soportar **WooCommerce 8.x** (última versión estable) y compatibilidad con WC 7.x.
+- Soportar **PrestaShop 8.x** (última versión) y compatibilidad con PS 1.7.x (API de módulos diferente — requiere adaptador).
+- PHP mínimo: **8.1+** (requerido por WC 8.x y PS 8.x).
 - Usar Guzzle HTTP como cliente HTTP; sin dependencias adicionales pesadas.
 - Integrar con hooks de WooCommerce (`woocommerce_payment_gateways`) y PrestaShop (`Payment` module class).
+- Timeouts HTTP configurables: default `connect_timeout=5s`, `request_timeout=30s`.
 
 #### Kotlin — Android
-- Mínimo Android API 21 (Android 5.0, cubre ~99% de dispositivos activos).
+- Mínimo **Android API 24** (Android 7.0, cubre ~97% de dispositivos activos; API 21 tiene limitaciones TLS relevantes para PCI).
 - Usar **OkHttp** + **Coroutines** para llamadas async nativas.
 - Publicar como AAR en Maven Central; también disponible via JitPack.
 - La `ApiKey` **nunca va en el APK**. El SDK en Android solo usa `SessionToken` (obtenido desde el backend del comercio).
 - UI components opcionales: `EcollectCardField` (View/Composable) para captura segura de tarjeta.
+- Incluir archivo `consumer-rules.pro` con reglas ProGuard/R8 para evitar que el minificador rompa las clases del SDK en apps en producción.
+- Timeouts OkHttp configurables: default `connectTimeout=5s`, `readTimeout=30s`, `writeTimeout=30s`.
+
+**Best practices de lifecycle en Android:**
+- Todas las operaciones del SDK se ejecutan en `Dispatchers.IO`; callbacks llegan en `Dispatchers.Main`.
+- El SDK expone `Flow<TransactionStatus>` para polling — el comercio cancela el flow desde su `ViewModel.viewModelScope`, evitando memory leaks cuando la Activity/Fragment se destruye.
+- El `EcollectCardField` (Composable/View) usa `rememberCoroutineScope()` / `WeakReference` internamente para no retener el contexto de UI.
+- Para operaciones de background (polling largo), usar `WorkManager` en lugar de Coroutines — sobrevive rotación de pantalla y paso a background.
 
 #### Swift — iOS
-- Mínimo iOS 14 (cubre ~95%+ de dispositivos activos).
-- Usar **URLSession** nativo + **async/await** (Swift Concurrency).
+- Mínimo **iOS 15** (permite `async/await` nativo sin workarounds; cubre ~96% de dispositivos activos).
+- Usar **URLSession** nativo + **Swift Concurrency** (`async/await`).
 - Distribuir via **Swift Package Manager** (principal) + **CocoaPods** (legacy).
 - La `ApiKey` **nunca va en el IPA/App**. Solo usa `SessionToken`.
-- UI components opcionales: `EcollectCardField` (UIKit + SwiftUI) para captura segura.
+- UI components opcionales: `EcollectCardField` para UIKit y SwiftUI.
+- Timeouts URLSession configurables: default `timeoutIntervalForRequest=30s`, `timeoutIntervalForResource=60s`.
+- Confirmar que las URLs de ecollect usan TLS 1.2+ — compatible con App Transport Security (ATS) sin excepciones en `Info.plist`.
+
+**Best practices de lifecycle en iOS:**
+- Todas las llamadas async usan `[weak self]` o `Task` con `@MainActor` para evitar retain cycles cuando el ViewController es deallocado.
+- El polling se implementa como `AsyncSequence` — el comercio cancela la tarea con `task.cancel()` en `viewWillDisappear` o `deinit`.
+- `EcollectCardField` (SwiftUI) usa `@StateObject` interno para que el ciclo de vida del campo esté ligado a la View; no retiene el ViewController padre.
+- Para background polling prolongado, usar `BGAppRefreshTask` (iOS Background Tasks framework).
+
+#### Consideraciones Cross-Platform Móvil (React Native y Flutter)
+- **React Native**: El SDK TypeScript puede usarse directamente en React Native para la lógica de negocio (backend calls). Para el componente de UI seguro (captura de tarjeta), crear un Native Module wrapper que envuelva `EcollectCardField` nativo de iOS/Android. Prioridad: Phase 2.
+- **Flutter**: Requiere un SDK en Dart o un `MethodChannel` que llame a los SDKs nativos Kotlin/Swift. Evaluar demanda antes de invertir. Prioridad: Phase 3.
 
 ### Flujo de integración móvil (Android & iOS)
 ```
@@ -124,6 +216,24 @@ payment = client.payments.process(payment_intent)
 6. App móvil → envía TokenId al backend para completar el pago
 7. Backend → llama ecollect.createTransactionPayment() con TokenId
 ```
+
+### Configuración de Timeouts HTTP (todos los SDKs)
+Los timeouts son configurables en el constructor del cliente con los siguientes defaults:
+```
+connectTimeout:  5 segundos  — tiempo máximo para establecer conexión TCP
+requestTimeout: 30 segundos  — tiempo máximo para recibir respuesta completa
+retryTimeout:   60 segundos  — tiempo total máximo para todos los reintentos
+```
+Justificación: ecollect es una API de pagos — timeouts muy cortos generan falsos negativos; muy largos bloquean el UX. 30s es el balance recomendado para createTransactionPayment.
+
+### Sandbox de Pruebas
+ecollect provee un ambiente de sandbox en `https://test1.e-collect.com/`. Los clientes reciben:
+- `ApiKey` de pruebas (distinta a producción)
+- `EntityCode` (EtyCode) de pruebas
+- `SrvCode(s)` de pruebas
+- Acceso al portal de pruebas para verificar transacciones
+
+El SDK configura automáticamente las URLs correctas según `environment: 'test' | 'prod'`. No hay modo "mock offline" — todas las pruebas van contra el sandbox real de ecollect.
 
 ### Estrategia de generación post-GA
 Mantener una especificación OpenAPI del core y usarla para generar bindings en Java/.NET/Ruby/Go si la demanda lo justifica, evitando librerías divergentes.
@@ -291,39 +401,113 @@ Con las estrategias implementadas, el Plan es 100% viable para construir el SDK 
 ## Reglas de Seguridad y Cumplimiento
 
 ### Protocolo para Garantizar que PAN Nunca Toque el Servidor del Cliente
-```
-function createToken(cardData) {
-  // Validar datos en cliente (Luhn, formato)
-  if (!isValidCard(cardData.number)) throw new ValidationError();
+
+#### Flujo de detección automática de FiCode (requerido antes de tokenCommand)
+Todos los comandos de `tokenCommand` requieren `FiCode`. El SDK lo detecta automáticamente:
+```typescript
+// Paso 1: obtener sistemas de pago del comercio (cacheable, válido por sesión)
+const paymentSystems = await getPaymentSystem();
+
+// Paso 2: detectar FiCode a partir de los primeros dígitos de la tarjeta usando FindKeys
+function detectFiCode(cardNumber: string, paymentSystems: PaymentSystemType[]): string {
+  const prefix6 = cardNumber.replace(/\s/g, '').substring(0, 6);
+  const prefix4 = prefix6.substring(0, 4);
+  const prefix2 = prefix6.substring(0, 2);
   
-  // Construir TokenInfoArray con datos de tarjeta
+  for (const system of paymentSystems) {
+    for (const fiImage of system.FiImagesArray || []) {
+      if (!fiImage.FindKeys) continue;
+      for (const key of fiImage.FindKeys.split(',')) {
+        const range = key.trim();
+        if (range.includes('-')) {
+          const [start, end] = range.split('-').map(Number);
+          const candidate = Number(prefix6.substring(0, start.toString().length));
+          if (candidate >= start && candidate <= end) return fiImage.FiCode;
+        } else {
+          if (prefix6.startsWith(range) || prefix4.startsWith(range) || prefix2.startsWith(range)) {
+            return fiImage.FiCode;
+          }
+        }
+      }
+    }
+  }
+  throw new ValidationError('No se pudo detectar la franquicia de la tarjeta');
+}
+```
+
+#### createToken con todos los campos requeridos por la API
+```typescript
+async function createToken(cardData: CardData, command: 'GET' | 'SAVE' | 'HOLD' = 'SAVE'): Promise<TokenResult> {
+  // Validar datos en cliente (Luhn, formato)
+  if (!isValidLuhn(cardData.number)) throw new ValidationError('Número de tarjeta inválido');
+  
+  // Detectar FiCode automáticamente (requerido para todos los comandos)
+  const fiCode = cardData.fiCode || detectFiCode(cardData.number, await getPaymentSystem());
+  
+  // Obtener nuevo SessionToken para este tokenCommand
+  // IMPORTANTE: tokenCommand requiere un SessionToken exclusivo por cada llamada
+  const freshSessionToken = await ensureFreshSessionToken(forceNew: true);
+  
+  // Construir TokenInfoArray con TODOS los campos requeridos para GET/SAVE/HOLD
   const tokenInfoArray = [
-    { AttributeCode: 0, AttributeDesc: "CardNumber", AttributeValue: cardData.number },
-    { AttributeCode: 2, AttributeDesc: "PaymentSystem", AttributeValue: cardData.paymentSystem },
-    { AttributeCode: 4, AttributeDesc: "ExpirationDate", AttributeValue: cardData.expiry },
-    { AttributeCode: 6, AttributeDesc: "Usermail", AttributeValue: cardData.email },
-    { AttributeCode: 17, AttributeDesc: "CardHolderName", AttributeValue: cardData.cardholderName },
-    // Agregar otros campos según país (e.g., documentNumber, etc.)
+    { AttributeCode: 0,  AttributeDesc: "CardNumber",      AttributeValue: cardData.number },
+    { AttributeCode: 2,  AttributeDesc: "PaymentSystem",   AttributeValue: cardData.paymentSystem },
+    { AttributeCode: 4,  AttributeDesc: "ExpirationDate",  AttributeValue: cardData.expiry },       // MM/YYYY
+    { AttributeCode: 9,  AttributeDesc: "FiCode",          AttributeValue: fiCode },
+    { AttributeCode: 21, AttributeDesc: "CardIssueBank",   AttributeValue: cardData.issuingBank || "" },
+    { AttributeCode: 22, AttributeDesc: "AccountType",     AttributeValue: cardData.accountType ?? "0" }, // 0=Credit, 1=Debit
   ];
   
-  // Enviar a tokenCommand con Command: "SAVE"
+  // Si no hay CustomerId, incluir datos del titular (requeridos por API)
+  if (!cardData.customerId) {
+    tokenInfoArray.push(
+      { AttributeCode: 6,  AttributeDesc: "Usermail",          AttributeValue: cardData.email },
+      { AttributeCode: 7,  AttributeDesc: "MobileCountryCode", AttributeValue: cardData.mobileCountryCode },
+      { AttributeCode: 8,  AttributeDesc: "MobileNumber",      AttributeValue: cardData.mobileNumber },
+      { AttributeCode: 17, AttributeDesc: "CardHolderName",    AttributeValue: cardData.cardholderName },
+      { AttributeCode: 18, AttributeDesc: "CardHolderIdType",  AttributeValue: cardData.documentType },
+      { AttributeCode: 19, AttributeDesc: "CardHolderId",      AttributeValue: cardData.documentNumber }
+    );
+  } else {
+    tokenInfoArray.push(
+      { AttributeCode: "CustomerId", AttributeDesc: "CustomerId", AttributeValue: cardData.customerId }
+    );
+  }
+  
   const baseUrl = environment === 'test' 
     ? 'https://test1.e-collect.com/app_express/api/tokenCommand' 
-    : 'https://www.e-collect.com/app_express/api/tokenCommand';
+    : 'https://www.e-collect.com/app_Express/api/tokenCommand';
   const response = await fetch(baseUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       EntityCode: etyCode,
-      SessionToken: sessionToken,
-      Command: "SAVE",
+      SessionToken: freshSessionToken,
+      Command: command,
       TokenInfoArray: tokenInfoArray
     })
   });
   
-  // Retornar TokenId del response
-  return response.tokenId;
+  // Manejar OTP si requerido (TokenStatus = VERIFY o OneTimePassword en respuesta)
+  if (response.TokenInfoArray?.some(a => a.AttributeDesc === 'OneTimePassword')) {
+    throw new OTPRequiredException(response.TokenInfoArray);
+  }
+  
+  return {
+    tokenId: response.TokenInfoArray?.find(a => a.AttributeDesc === 'TokenId')?.AttributeValue,
+    fiCode:  response.TokenInfoArray?.find(a => a.AttributeDesc === 'FiCode')?.AttributeValue,
+    last4:   response.TokenInfoArray?.find(a => a.AttributeDesc === 'Last4')?.AttributeValue,
+    maskedCard: response.TokenInfoArray?.find(a => a.AttributeDesc === 'MaskedCard')?.AttributeValue,
+    lifetimeSecs: response.TokenInfoArray?.find(a => a.AttributeDesc === 'LifetimeSecs')?.AttributeValue,
+  };
 }
+```
+
+#### Flujo OTP (TokenStatus = VERIFY)
+Cuando `queryToken` retorna tokens con `TokenStatus: 'VERIFY'` o `tokenCommand` retorna `OneTimePassword` en la respuesta, el SDK lanza `OTPRequiredException`. El comercio debe:
+1. Solicitar al usuario la clave dinámica enviada a su email/móvil.
+2. Reintentar la operación incluyendo `AttributeCode 25` (OneTimePassword) en `TokenInfoArray`.
+El SDK provee `retryWithOTP(originalRequest, otp)` para simplificar este flujo.
 ```
 
 ### Implementación de Validación de Firmas y Sesiones
@@ -714,8 +898,29 @@ const errorMapping = {
   'FAIL_SESSIONNOTFOUND': { exception: 'WebhookValidationException', message: 'SessionToken a verificar no existe' },
   'FAIL_TICKETIDNOTMATCH': { exception: 'WebhookValidationException', message: 'TicketId no match con SessionToken' },
   
+  // Errores de tokenCommand
+  'FAIL_INVALIDCOMMAND': { exception: 'ValidationException', message: 'Command inválido' },
+  'FAIL_INVALIDACCOUNTTYPE': { exception: 'ValidationException', message: 'AccountType inválido (0=Crédito, 1=Débito)' },
+  'FAIL_CARDHOLDERID': { exception: 'ValidationException', message: 'CardHolderId inválido' },
+  'FAIL_CARDHOLDERNAME': { exception: 'ValidationException', message: 'CardHolderName inválido' },
+  'FAIL_MOBILENUMBER': { exception: 'ValidationException', message: 'MobileNumber inválido' },
+  
   // Errores de Sistema
   'FAIL_SYSTEM': { exception: 'NetworkRetryableException', action: 'retry_exponential_backoff' }
+};
+
+// Códigos de ÉXITO no estándar — no tratar como error
+const successCodes = {
+  'SUCCESS': { isSuccess: true },
+  'SUCCESS_ALREADY_CREATED': { 
+    isSuccess: true, 
+    note: 'Tarjeta ya tokenizada para este usuario — retornar token existente sin error'
+  },
+  'NO_RECORDS': { 
+    isSuccess: true, 
+    returnsEmpty: true,
+    note: 'Sin tokens registrados (queryToken) o sin medios de pago (getPaymentSystem) — retornar array vacío'
+  }
 };
 ```
 
@@ -735,7 +940,7 @@ const countryValidations = {
     paymentSystems: [3, 6],  // VISANET, CARDNET
     requiresUserType: false,
     allowsInstallments: false,
-    preAuthOnly: 'AZUL',  // Pre-auth solo con FICode AZUL
+    preAuthFiCodes: ['AZUL', 'CARDNET'],  // Pre-auth disponible con AZUL (Banco Popular) y CARDNET
     speiAllowed: false
   },
   'MX': {  // México
@@ -786,15 +991,19 @@ async function generatePaymentLink(
     const countryCode = intent.customer.countryCode || '57';
     const mobile = intent.customer.phone.replace(/\D/g, '');
     
+    // AttributeCode 7 = MobileCountryCode, AttributeCode 8 = MobileNumber
+    // NOTA: 28 = DevValue (IVA Colombia) y 29 = FailCode — NO usar para SMS
     paymentInfoArray.push(
-      { AttributeCode: 28, AttributeDesc: 'MobileCountryCode', AttributeValue: countryCode },
-      { AttributeCode: 29, AttributeDesc: 'MobileNumber', AttributeValue: mobile }
+      { AttributeCode: 7, AttributeDesc: 'MobileCountryCode', AttributeValue: countryCode },
+      { AttributeCode: 8, AttributeDesc: 'MobileNumber', AttributeValue: mobile }
     );
   } else if (method === 'qr') {
+    // QR usa el mismo link generado para email; LifetimeSecs se configura como parámetro
+    // de la transacción (campo nativo de la respuesta), no como AttributeCode adicional
     paymentInfoArray.push({
-      AttributeCode: 35,
-      AttributeDesc: 'LifetimeSecs',
-      AttributeValue: lifetime.toString()
+      AttributeCode: 6,
+      AttributeDesc: 'Usermail',
+      AttributeValue: intent.customer.email
     });
   } else {  // email
     paymentInfoArray.push({
@@ -944,37 +1153,47 @@ async function createTokenWithCustomerId(
 - Validar aislamiento de PAN.
 - Plugin básico Shopify.
 
-### Semana 2 — PHP + Kotlin + Swift SDKs (Beta)
+### Semana 2 — PHP SDK (Beta)
 **PHP SDK (WooCommerce & PrestaShop)**
-- Implementar cliente HTTP (Guzzle), SessionToken, processPayment, tokenCommand.
-- Desarrollar plugin WooCommerce: gateway class + checkout form + webhook handler.
-- Desarrollar módulo PrestaShop: PaymentModule class + hooks de pago.
-- Tests con PHPUnit; soportar PHP 7.4+.
+- Implementar cliente HTTP (Guzzle), SessionToken con refresh automático, processPayment, tokenCommand con detección de FiCode.
+- Desarrollar plugin WooCommerce 8.x: gateway class + checkout form + webhook handler.
+  - Adaptador de compatibilidad para WC 7.x.
+- Desarrollar módulo PrestaShop 8.x: `PaymentModule` class + hooks de pago.
+  - Adaptador de compatibilidad para PS 1.7.x.
+- Timeouts configurables en admin panel del plugin.
+- Tests con PHPUnit; PHP 8.1+.
 
+### Semana 3 — Kotlin + Swift SDKs (Beta Móvil)
 **Kotlin SDK (Android)**
-- Implementar cliente con OkHttp + Coroutines.
-- `EcollectCardField` View/Composable para captura segura.
+- Implementar cliente con OkHttp + Coroutines; timeouts configurables.
+- `EcollectCardField` View y Composable para captura segura con detección automática de franquicia.
+- Exponer `Flow<TransactionStatus>` para polling (cancelable desde `viewModelScope`).
 - Solo SessionToken en cliente (ApiKey queda en backend).
-- Publicar AAR en Maven Central.
-- Tests con JUnit5 + MockK.
+- Incluir `consumer-rules.pro` para ProGuard/R8.
+- Publicar AAR en Maven Central y JitPack.
+- Tests con JUnit5 + MockK; mínimo Android API 24.
 
 **Swift SDK (iOS)**
-- Implementar cliente con URLSession + async/await.
-- `EcollectCardField` para UIKit y SwiftUI.
+- Implementar cliente con URLSession + async/await; timeouts configurables.
+- `EcollectCardField` para UIKit y SwiftUI con detección automática de franquicia.
+- Exponer `AsyncSequence<TransactionStatus>` para polling (cancelable con `task.cancel()`).
 - Solo SessionToken en cliente (ApiKey queda en backend).
-- Distribuir via Swift Package Manager + CocoaPods.
+- Distribuir via Swift Package Manager + CocoaPods; iOS 15+.
 - Tests con XCTest.
 
-### Semana 3 — Python SDK + GA Hardening
+### Semana 4 — Python SDK + GA Hardening
 **Python SDK**
-- Implementar cliente con httpx (async) + requests (sync).
-- Soportar Python 3.9+.
+- Implementar cliente con httpx (async) y requests (sync).
+- Soportar Python 3.10+.
 - Publicar en PyPI.
 - Tests con pytest.
 
 **Hardening general**
 - Auditoría de seguridad PCI para todos los SDKs.
-- Documentación multi-lenguaje con ejemplos ejecutables.
-- Sandbox con 10+ escenarios simulados por lenguaje.
-- CI/CD pipeline: tests automáticos, OWASP scan, publicación de paquetes.
-- Versioning policy (semver) y changelog.
+- Documentación multi-lenguaje con ejemplos ejecutables por plataforma.
+- CI/CD pipeline (monorepo, path-based): tests automáticos, OWASP scan, publicación de paquetes por SDK.
+- Versioning policy (semver independiente por SDK) y changelogs automáticos.
+
+### Phase 2 (Post-GA)
+- **React Native wrapper**: Native Module que envuelve `EcollectCardField` de Kotlin/Swift. Lógica de backend usa el SDK TypeScript directamente.
+- **Flutter plugin**: `MethodChannel` sobre los SDKs nativos Kotlin/Swift; evaluar demanda antes de iniciar.

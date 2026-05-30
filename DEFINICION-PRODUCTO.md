@@ -244,22 +244,33 @@ El SDK se organizará en módulos desacoplados para facilitar la integración se
 - Objetivo: Validación con 5-10 clientes beta.
 - Entregables: SDK en TypeScript/Node.js con core features (checkout redirect, webhooks, SessionToken, polling), sandbox, documentación inicial. Plugin básico para Shopify.
 
-### Semana 2 (Beta): PHP + Móviles (Android & iOS)
-- Duración: 1 semana (generación automática de bindings y features con IA).
-- Objetivo: Expansión a 50 clientes, feedback iterativo.
+### Semana 2 (Beta): PHP SDK — WooCommerce y PrestaShop
+- Duración: 1 semana.
+- Objetivo: Primeros clientes e-commerce en sandbox.
 - Entregables:
-  - **PHP SDK**: Plugin WooCommerce + módulo PrestaShop.
-  - **Kotlin SDK**: SDK nativo Android (AAR publicado en Maven Central).
-  - **Swift SDK**: SDK nativo iOS (Swift Package Manager + CocoaPods).
-  - Hosted fields, polling fallback, IDE plugins, CLI.
+  - **PHP SDK** (PHP 8.1+): Plugin WooCommerce 8.x + módulo PrestaShop 8.x, con adaptadores de compatibilidad para WC 7.x y PS 1.7.x.
+  - Hosted fields, polling fallback, webhook handler, timeouts configurables.
 
-### Semana 3 (GA): Python + Hardening + Scale
-- Duración: 1 semana (automatización de QA, seguridad y lanzamiento con IA).
+### Semana 3 (Beta Móvil): Kotlin + Swift SDKs
+- Duración: 1 semana.
+- Objetivo: Primeros clientes mobile en sandbox.
+- Entregables:
+  - **Kotlin SDK**: Android API 24+, OkHttp + Coroutines, `Flow<TransactionStatus>`, `EcollectCardField` (View + Composable), ProGuard rules, Maven Central.
+  - **Swift SDK**: iOS 15+, URLSession + async/await, `AsyncSequence<TransactionStatus>`, `EcollectCardField` (UIKit + SwiftUI), SPM + CocoaPods.
+
+### Semana 4 (GA): Python + Hardening + Scale
+- Duración: 1 semana.
 - Objetivo: Lanzamiento público, soporte a escala.
 - Entregables:
-  - **Python SDK**: Para backends de Shopify apps y microservicios.
-  - Auditoría de seguridad PCI, tuning de rendimiento, monitoreo/alerting.
-  - Modelo de soporte, versioning policy, documentación completa multi-lenguaje.
+  - **Python SDK** (Python 3.10+): httpx + requests, PyPI.
+  - Auditoría de seguridad PCI para todos los SDKs, OWASP scan en CI/CD.
+  - Monorepo CI/CD con path-based triggers por SDK.
+  - Versioning policy (semver independiente por SDK), changelogs automáticos.
+  - Documentación completa multi-lenguaje con ejemplos ejecutables.
+
+### Phase 2 (Post-GA): Cross-Platform Móvil
+- **React Native wrapper**: Native Module sobre SDKs Kotlin/Swift + TypeScript SDK para lógica backend.
+- **Flutter plugin**: `MethodChannel` sobre SDKs nativos; evaluar demanda antes de iniciar.
 
 ## Métricas de Éxito
 
