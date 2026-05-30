@@ -37,20 +37,96 @@ Los modelos se basan en la documentación de la API Gateway de ecollect (Payment
 - **Ciclo de Vida**: Emisión → Cache (con refresh automático si <5 min restantes) → Expiración → Limpieza automática.
 - **Seguridad**: No persistir en disco; usar HTTPS-only cookies para browser.
 
-## Arquitectura Multi-lenguaje y Enfoque Ruby-like
-- **Patrón Stripe Ruby**: SDK único por lenguaje con namespace central (`Ecollect`/`EcollectClient`), configuración global y cliente explícito. Ejemplo Stripe:
-  - `Stripe.api_key = '...'`
-  - `client = Stripe::StripeClient.new('sk_test...')`
-  - `client.v1.customers.list`
-- **Nuestro enfoque**: un solo core técnico con un wrapper idiomático para cada lenguaje.
-  - Para Ruby, diseñar un gem/paquete con API similar:
-    - `Ecollect.api_key = '...'`
-    - `client = Ecollect::Client.new(api_key: '...')`
-    - `client.v1.transactions.create(...)`
-- **Recursos y clientes**: generar objetos de recurso consistentes, con helpers de serialización y validación, igual que Stripe usa clases dinámicas para recursos.
-- **Configuración por request**: soporte para opciones locales (`api_key`, `environment`, `stripe_version`/`ecollect_version`) en cada llamada, sin perder el config global.
-- **Extra features**: retries configurables, timeouts, logging, proxy, y hooks/instrumentation. Estas capacidades deben estar disponibles en la versión Ruby y en cualquier binding adicional.
-- **Estrategia de generación**: mantener una única especificación API primero y usarla para generar bindings en .NET/Ruby/Go si se decide implementar, evitando librerías divergentes.
+## Arquitectura Multi-lenguaje (5 SDKs)
+
+### Plataformas objetivo
+| SDK | Plataformas | Distribución |
+|---|---|---|
+| TypeScript/JS | Shopify, frontends web, Node.js backends | npm |
+| PHP | WooCommerce, PrestaShop | Composer / Packagist |
+| Kotlin | Android (apps nativas) | Maven Central / JitPack |
+| Swift | iOS / iPhone (apps nativas) | Swift Package Manager + CocoaPods |
+| Python | Backends, Shopify apps, microservicios | PyPI |
+
+### Inicialización idiomática por lenguaje
+
+**TypeScript/JavaScript**
+```ts
+import { EcollectClient } from 'ecollect-sdk';
+const client = new EcollectClient({ apiKey: '...', etyCode: 123, environment: 'test' });
+const token = await client.session.create();
+const payment = await client.payments.process(paymentIntent);
+```
+
+**PHP (WooCommerce / PrestaShop)**
+```php
+use Ecollect\Client;
+$client = new Client(['api_key' => '...', 'ety_code' => 123, 'environment' => 'test']);
+$token = $client->session->create();
+$payment = $client->payments->process($paymentIntent);
+```
+
+**Kotlin (Android)**
+```kotlin
+val client = EcollectClient.Builder()
+    .apiKey("...")
+    .etyCode(123)
+    .environment(Environment.TEST)
+    .build()
+// Usando coroutines
+val payment = client.payments.process(paymentIntent)
+```
+
+**Swift (iOS)**
+```swift
+let client = EcollectClient(apiKey: "...", etyCode: 123, environment: .test)
+// Usando async/await
+let payment = try await client.payments.process(paymentIntent)
+```
+
+**Python**
+```python
+from ecollect import EcollectClient
+client = EcollectClient(api_key="...", ety_code=123, environment="test")
+payment = client.payments.process(payment_intent)
+```
+
+### Consideraciones especiales por plataforma
+
+#### PHP — WooCommerce y PrestaShop
+- Publicar como plugin oficial en WordPress.org Marketplace y PrestaShop Addons.
+- Soportar PHP 7.4+ (mínimo requerido por WooCommerce actual).
+- Usar Guzzle HTTP como cliente HTTP; sin dependencias adicionales pesadas.
+- Integrar con hooks de WooCommerce (`woocommerce_payment_gateways`) y PrestaShop (`Payment` module class).
+
+#### Kotlin — Android
+- Mínimo Android API 21 (Android 5.0, cubre ~99% de dispositivos activos).
+- Usar **OkHttp** + **Coroutines** para llamadas async nativas.
+- Publicar como AAR en Maven Central; también disponible via JitPack.
+- La `ApiKey` **nunca va en el APK**. El SDK en Android solo usa `SessionToken` (obtenido desde el backend del comercio).
+- UI components opcionales: `EcollectCardField` (View/Composable) para captura segura de tarjeta.
+
+#### Swift — iOS
+- Mínimo iOS 14 (cubre ~95%+ de dispositivos activos).
+- Usar **URLSession** nativo + **async/await** (Swift Concurrency).
+- Distribuir via **Swift Package Manager** (principal) + **CocoaPods** (legacy).
+- La `ApiKey` **nunca va en el IPA/App**. Solo usa `SessionToken`.
+- UI components opcionales: `EcollectCardField` (UIKit + SwiftUI) para captura segura.
+
+### Flujo de integración móvil (Android & iOS)
+```
+1. App móvil → llama al backend propio del comercio
+2. Backend (PHP/Node/Python) → llama ecollect.getSessionToken() con ApiKey privada
+3. Backend → devuelve SessionToken a la app (válido 30 min)
+4. App móvil → usa SDK con SessionToken para tokenizar tarjeta
+   (datos de tarjeta van directo a ecollect, nunca al backend del comercio)
+5. ecollect → devuelve TokenId a la app
+6. App móvil → envía TokenId al backend para completar el pago
+7. Backend → llama ecollect.createTransactionPayment() con TokenId
+```
+
+### Estrategia de generación post-GA
+Mantener una especificación OpenAPI del core y usarla para generar bindings en Java/.NET/Ruby/Go si la demanda lo justifica, evitando librerías divergentes.
 
 ## Todos los Casos de Uso Considerados (19 Identificados)
 
@@ -856,22 +932,49 @@ async function createTokenWithCustomerId(
 
 ## Plan de Implementación (Fases)
 
-### Fase 1: Core Lógico y Manejo de Sesiones
+### Semana 1 — TypeScript/JavaScript SDK (Alpha)
+**Fase 1: Core Lógico y Manejo de Sesiones**
 - Implementar modelos de datos y mapeo semántico.
-- Desarrollar lógica de SessionToken (emisión, refresh, cache).
-- Pruebas unitarias para autenticación.
+- Desarrollar lógica de SessionToken (emisión, refresh automático, cache in-memory).
+- Pruebas unitarias para autenticación (Jest/Vitest).
 
-### Fase 2: Componentes de UI y Tokenización
-- Crear componentes UI seguros (iframes).
-- Integrar endpoint de tokenización.
+**Fase 2: Pagos y Tokenización**
+- Crear componentes UI seguros (hosted fields / iframe).
+- Integrar todos los endpoints: tokenCommand, processPayment, polling, webhooks.
 - Validar aislamiento de PAN.
+- Plugin básico Shopify.
 
-### Fase 3: Wrappers para Pagos (Redirect y Web Services)
-- Implementar processPayment con reintentos.
-- Gestionar flujos de redirección y callbacks.
-- Agregar polling/webhooks.
+### Semana 2 — PHP + Kotlin + Swift SDKs (Beta)
+**PHP SDK (WooCommerce & PrestaShop)**
+- Implementar cliente HTTP (Guzzle), SessionToken, processPayment, tokenCommand.
+- Desarrollar plugin WooCommerce: gateway class + checkout form + webhook handler.
+- Desarrollar módulo PrestaShop: PaymentModule class + hooks de pago.
+- Tests con PHPUnit; soportar PHP 7.4+.
 
-### Fase 4: Documentación y Sandbox
-- Generar docs auto y ejemplos.
-- Configurar sandbox con datos simulados.
-- QA final y auditoría de seguridad.
+**Kotlin SDK (Android)**
+- Implementar cliente con OkHttp + Coroutines.
+- `EcollectCardField` View/Composable para captura segura.
+- Solo SessionToken en cliente (ApiKey queda en backend).
+- Publicar AAR en Maven Central.
+- Tests con JUnit5 + MockK.
+
+**Swift SDK (iOS)**
+- Implementar cliente con URLSession + async/await.
+- `EcollectCardField` para UIKit y SwiftUI.
+- Solo SessionToken en cliente (ApiKey queda en backend).
+- Distribuir via Swift Package Manager + CocoaPods.
+- Tests con XCTest.
+
+### Semana 3 — Python SDK + GA Hardening
+**Python SDK**
+- Implementar cliente con httpx (async) + requests (sync).
+- Soportar Python 3.9+.
+- Publicar en PyPI.
+- Tests con pytest.
+
+**Hardening general**
+- Auditoría de seguridad PCI para todos los SDKs.
+- Documentación multi-lenguaje con ejemplos ejecutables.
+- Sandbox con 10+ escenarios simulados por lenguaje.
+- CI/CD pipeline: tests automáticos, OWASP scan, publicación de paquetes.
+- Versioning policy (semver) y changelog.
