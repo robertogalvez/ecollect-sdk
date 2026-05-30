@@ -30,12 +30,36 @@ Estos objetivos se alinean con las necesidades del mercado FinTech, donde la vel
 ## Arquitectura Técnica Sugerida
 
 ### Soporte Multi-lenguaje
-El SDK priorizará soporte nativo para los siguientes lenguajes, basados en su prevalencia en el ecosistema FinTech:
-1. **JavaScript/TypeScript (Prioridad Alta)**: Para aplicaciones web modernas y Node.js.
-2. **Python (Prioridad Alta)**: Para análisis de datos y backends rápidos.
-3. **PHP (Prioridad Media)**: Para sistemas legacy y e-commerce tradicionales.
+El SDK priorizará soporte nativo para los siguientes lenguajes, basados en las plataformas objetivo (e-commerce y apps móviles):
+
+1. **JavaScript/TypeScript (Prioridad Alta)**: Core del SDK. Cubre Shopify apps, frontends web modernos y backends Node.js.
+2. **PHP (Prioridad Alta)**: Requerido para WooCommerce (WordPress) y PrestaShop, las plataformas de e-commerce más usadas en Latinoamérica.
+3. **Kotlin (Prioridad Alta)**: SDK nativo para Android. Compatible con proyectos Java legacy de Android.
+4. **Swift (Prioridad Alta)**: SDK nativo para iOS / iPhone.
+5. **Python (Prioridad Media)**: Para backends de Shopify apps, microservicios y análisis de datos.
 
 La arquitectura aprovechará un core compartido en TypeScript/Node.js para el MVP, con bindings idiomáticos por lenguaje y adaptadores que eviten librerías divergentes.
+
+### Plataformas E-commerce y Móviles Cubiertas
+| Plataforma | Lenguaje SDK | Tipo de integración |
+|---|---|---|
+| WooCommerce | PHP | Plugin WordPress nativo |
+| PrestaShop | PHP | Módulo nativo |
+| Shopify | JavaScript/TypeScript | App via Shopify API + checkout extensions |
+| Android | Kotlin | SDK nativo (AAR / Maven) |
+| iOS / iPhone | Swift | SDK nativo (SPM / CocoaPods) |
+| Backends generales | Python / Node.js | Librería de servidor |
+
+### Arquitectura de Seguridad para SDKs Móviles
+Los SDKs de Android e iOS **nunca deben contener la ApiKey privada**. El flujo obligatorio es:
+```
+App móvil → Servidor del comercio (Node.js/PHP/Python con ApiKey)
+              → ecollect API → SessionToken
+              ← SessionToken devuelto a la app
+App móvil → usa SessionToken para tokenizar tarjeta directamente en ecollect
+              (PAN nunca toca servidor del comercio ni la app)
+```
+Esto garantiza PCI-DSS compliance en entornos móviles.
 
 ### Arquitectura de la Librería: Frontend vs Backend
 - **Frontend (Cliente/Browser)**: Componentes UI seguros (iframes/hosted fields) para captura de datos sensibles sin exponer PAN. Manejo de sesión transparente (SessionToken) y lógica de reintento client-side. Incluye validación de payloads para webhooks y abstracción de métodos complejos.
@@ -55,13 +79,23 @@ La arquitectura aprovechará un core compartido en TypeScript/Node.js para el MV
   ```
 - **Implementación**: Refresh logic transparente; casos edge: Transacciones >30 min usan refresh proactivo.
 
-### Arquitectura Multi-lenguaje (Decisión: TS-First MVP)
-- **Recomendación**: Core en TypeScript/Node.js para MVP (compatible con Deno/Bun). Python/PHP: Wrappers puros via HTTP a microservicio Node.js.
-- **Inspiración Stripe Ruby**: Cada binding debe comportarse como una librería idiomática propia, con namespace central, configuración global y cliente explícito. Ejemplo: `Ecollect.api_key = '...'` y `client = Ecollect::Client.new(...)`.
-- **Estrategia de extensión**: .NET, Ruby y otros lenguajes se incorporan como bindings/adaptadores sobre el mismo core o mediante generación de SDKs de forma controlada.
-- **Pros**: Mantenimiento centralizado y consistente; evita versiones divergentes del mismo producto. Un solo contrato técnico facilita soporte y documentación.
-- **Cons**: Requiere diseño API-first y/o un microservicio compartido para los lenguajes con menos tráfico inicial.
-- **Post-GA**: Migrar a un enfoque API-first si escala lo justifica, con generación automatizada de SDKs via OpenAPI para Java/.NET/Ruby/Go, manteniendo un único modelo de negocio.
+### Arquitectura Multi-lenguaje (Decisión: TS-First MVP, 5 lenguajes en Roadmap)
+- **Recomendación**: Core en TypeScript/Node.js para MVP (compatible con Deno/Bun). PHP, Kotlin y Swift: SDKs idiomáticos nativos. Python: wrapper de servidor.
+- **Inspiración Stripe**: Cada binding debe comportarse como una librería idiomática propia, con namespace central, configuración global y cliente explícito.
+  - JS/TS: `const client = new EcollectClient({ apiKey, etyCode, environment })`
+  - PHP: `$client = new \Ecollect\Client(['api_key' => '...', 'ety_code' => '...'])`
+  - Kotlin: `val client = EcollectClient.Builder().apiKey("...").etyCode("...").build()`
+  - Swift: `let client = EcollectClient(apiKey: "...", etyCode: "...")`
+  - Python: `client = EcollectClient(api_key="...", ety_code="...")`
+- **Distribución por plataforma**:
+  - JS/TS → npm (`npm install ecollect-sdk`)
+  - PHP → Composer/Packagist (`composer require ecollect/sdk`)
+  - Kotlin/Java → Maven Central / JitPack (`implementation 'com.ecollect:sdk:x.y.z'`)
+  - Swift → Swift Package Manager + CocoaPods
+  - Python → PyPI (`pip install ecollect-sdk`)
+- **Pros**: Mantenimiento centralizado; evita versiones divergentes. Un solo contrato técnico facilita soporte y documentación.
+- **Cons**: Requiere diseño API-first. SDKs móviles requieren manejo especial de threading (async/await en Swift, Coroutines en Kotlin).
+- **Post-GA**: Generación automatizada via OpenAPI para Java/.NET/Ruby/Go si la demanda lo justifica.
 
 ### Business Rules Engine
 - Normalización de errores a excepciones semánticas:
@@ -205,20 +239,27 @@ El SDK se organizará en módulos desacoplados para facilitar la integración se
 
 ## Roadmap de Lanzamiento
 
-### Semana 1 (Alpha): MVP Single-Language
+### Semana 1 (Alpha): MVP TypeScript/JavaScript
 - Duración: 1 semana (prototipado ultra-rápido con IA full).
 - Objetivo: Validación con 5-10 clientes beta.
-- Entregables: SDK básico en JavaScript/Node.js con core features (checkout redirect, webhooks), sandbox, documentación inicial.
+- Entregables: SDK en TypeScript/Node.js con core features (checkout redirect, webhooks, SessionToken, polling), sandbox, documentación inicial. Plugin básico para Shopify.
 
-### Semana 2 (Beta): Multi-Language + Features
+### Semana 2 (Beta): PHP + Móviles (Android & iOS)
 - Duración: 1 semana (generación automática de bindings y features con IA).
 - Objetivo: Expansión a 50 clientes, feedback iterativo.
-- Entregables: Soporte para Python y PHP, hosted fields, polling fallback, IDE plugins, CLI.
+- Entregables:
+  - **PHP SDK**: Plugin WooCommerce + módulo PrestaShop.
+  - **Kotlin SDK**: SDK nativo Android (AAR publicado en Maven Central).
+  - **Swift SDK**: SDK nativo iOS (Swift Package Manager + CocoaPods).
+  - Hosted fields, polling fallback, IDE plugins, CLI.
 
-### Semana 3 (GA): Hardening + Scale
+### Semana 3 (GA): Python + Hardening + Scale
 - Duración: 1 semana (automatización de QA, seguridad y lanzamiento con IA).
 - Objetivo: Lanzamiento público, soporte a escala.
-- Entregables: Auditoría de seguridad, tuning de rendimiento, monitoreo/alerting, modelo de soporte, versioning policy.
+- Entregables:
+  - **Python SDK**: Para backends de Shopify apps y microservicios.
+  - Auditoría de seguridad PCI, tuning de rendimiento, monitoreo/alerting.
+  - Modelo de soporte, versioning policy, documentación completa multi-lenguaje.
 
 ## Métricas de Éxito
 
