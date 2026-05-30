@@ -1,0 +1,24 @@
+{
+    "name": "ecollect/sdk",
+    "description": "PHP SDK for ecollect LatAm payment gateway",
+    "type": "library",
+    "license": "MIT",
+    "require": {
+        "php": ">=7.4",
+        "guzzlehttp/guzzle": "^7.0"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^10.0",
+        "guzzlehttp/promises": "^2.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Ecollect\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Ecollect\\Tests\\": "tests/"
+        }
+    }
+}
