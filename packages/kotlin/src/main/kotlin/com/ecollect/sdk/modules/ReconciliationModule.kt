@@ -4,7 +4,6 @@ import com.ecollect.sdk.Config
 import com.ecollect.sdk.exceptions.*
 import com.ecollect.sdk.types.*
 import com.ecollect.sdk.utils.HttpClient
-import com.ecollect.sdk.utils.Polling
 
 class ReconciliationModule(
     private val config: Config,

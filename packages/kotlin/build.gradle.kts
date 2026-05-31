@@ -21,9 +21,13 @@ dependencies {
     testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
 }
 
+tasks.withType<JavaCompile> {
+    targetCompatibility = "17"
+}
+
 tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
     kotlinOptions {
-        jvmTarget = "11"
+        jvmTarget = "17"
     }
 }
 
