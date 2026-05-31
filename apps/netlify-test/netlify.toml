@@ -1,0 +1,16 @@
+[build]
+command = "npm run build"
+functions = "netlify/functions"
+publish = "dist"
+
+[dev]
+command = "npm run dev"
+
+[context.production]
+environment = { ECOLLECT_ENVIRONMENT = "prod" }
+
+[context.deploy-preview]
+environment = { ECOLLECT_ENVIRONMENT = "test" }
+
+[context.branch-deploy]
+environment = { ECOLLECT_ENVIRONMENT = "test" }
