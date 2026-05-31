@@ -1,5 +1,7 @@
 # SDK de ecollect para TypeScript / JavaScript
 
+![Node 18+](https://img.shields.io/badge/Node-18%2B-339933?logo=node.js) ![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript) ![Licencia: MIT](https://img.shields.io/badge/Licencia-MIT-yellow.svg)
+
 > **SDK oficial para la pasarela de pagos ecollect en LatAm** — procese tarjetas, transferencias bancarias (PSE / SPEI), guarde tokens de tarjeta, concilie transacciones y verifique webhooks, todo desde Node.js o cualquier entorno moderno de JavaScript.
 
 ---
@@ -169,7 +171,7 @@ Lo que ocurre internamente:
 1. Cuando realiza la primera llamada a la API (p. ej. `cliente.payments.process(...)`), el SDK llama a `getSessionToken` con su `apiKey` y `etyCode`.
 2. El token se almacena en memoria caché.
 3. En las llamadas posteriores, se reutiliza el token almacenado.
-4. Si el token expira durante una solicitud, el SDK captura la respuesta `FAIL_APIEXPIREDSESSION`, obtiene un nuevo token y reintenta la llamada original de forma transparente — usted nunca verá el error.
+4. Si el token expira durante una solicitud, el SDK captura la respuesta `FAIL_APIEXPIREDSESSION`, obtiene un nuevo token y reintenta la llamada original de forma transparente.
 
 Si alguna vez necesita inspeccionar o refrescar manualmente el token de sesión:
 
@@ -216,7 +218,7 @@ const tarjeta: CardData = {
   // 👤 Nombre completo del titular exactamente como aparece en la tarjeta
   cardHolderName: 'David Caballero',
 
-  // 🪪 Tipo de documento: CC=Cédula colombiana, NIT=NIT, CI=Ecuador/Venezuela, CURP=México, etc.
+  // 🪪 Tipo de documento: CC=Cédula colombiana, NIT=NIT, CI=Ecuador/Venezuela, CURP=México
   cardHolderIdType: 'CC',
 
   // 🔢 El número de documento del titular de la tarjeta
@@ -304,11 +306,11 @@ if (tarjetasGuardadas.length === 0) {
 
   for (const tarjeta of tarjetasGuardadas) {
     console.log('---');
-    console.log('ID del token:', tarjeta.tokenId);         // Use esto para pagos
-    console.log('Tarjeta enmascarada:', tarjeta.maskedCard); // Muéstrelo al cliente
+    console.log('ID del token:', tarjeta.tokenId);
+    console.log('Tarjeta enmascarada:', tarjeta.maskedCard);
     console.log('Últimos 4:', tarjeta.last4);
     console.log('Banco:', tarjeta.fiName);
-    console.log('Estado:', tarjeta.tokenStatus);            // 'ACTIVE' | 'VERIFY' | 'EXPIRED'
+    console.log('Estado:', tarjeta.tokenStatus); // 'ACTIVE' | 'VERIFY' | 'EXPIRED'
     console.log('Requiere OTP:', tarjeta.requiresOneTimePassword);
   }
 }
@@ -330,7 +332,7 @@ const cliente = new EcollectClient({
   apiKey: 'SU_CLAVE_DE_API_AQUI',
   etyCode: 50039,
   environment: 'test',
-  srvCode: 1001, // Su código de servicio predeterminado
+  srvCode: 1001,
 });
 
 const intencionDePago: PaymentIntent = {
@@ -351,7 +353,7 @@ const intencionDePago: PaymentIntent = {
     fullName: 'David Caballero',
     email: 'david.caballero@ecollect.co',
     phone: '+1 311111111',
-    documentType: 'CC',        // Cédula de ciudadanía colombiana
+    documentType: 'CC',
     documentNumber: '123456799',
   },
 
@@ -361,26 +363,24 @@ const intencionDePago: PaymentIntent = {
   // 🔔 URL a la que ecollect envía el resultado del pago (su endpoint de webhook)
   responseUrl: 'https://susitio.com/webhooks/ecollect',
 
-  // 🌐 Idioma para la página de pago de ecollect: 'ES' (español) o 'EN' (inglés)
+  // 🌐 Idioma para la página de pago de ecollect: 'ES' o 'EN'
   langCode: 'ES',
 };
 
 const resultado: TransactionResult = await cliente.payments.process(intencionDePago);
 
 console.log('Código de retorno:', resultado.returnCode); // 'SUCCESS'
-console.log('ID del ticket:', resultado.ticketId);       // ¡Guárdelo! Se usa para consultar el estado.
+console.log('ID del ticket:', resultado.ticketId);       // ¡Guárdelo!
 
 // Para el pago alojado, redirija al usuario a esta URL
 if (resultado.eCollectUrl) {
   console.log('Redirigir usuario a:', resultado.eCollectUrl);
-  // En Express: res.redirect(resultado.eCollectUrl)
-  // En Next.js: router.push(resultado.eCollectUrl)
 }
 ```
 
 ### 8.2 Pago con token de tarjeta guardado (pago en un clic)
 
-Una vez que tiene un `tokenId` del paso 6, puede cobrar la tarjeta directamente — el cliente no necesita ingresar su número de tarjeta nuevamente.
+Una vez que tiene un `tokenId` del paso 6, puede cobrar la tarjeta directamente.
 
 ```typescript
 const intencionConToken: PaymentIntent = {
@@ -416,7 +416,7 @@ console.log('Código de trazabilidad:', resultado.trazabilityCode);
 
 ### 8.3 Pre-autorización y captura
 
-La pre-autorización reserva fondos en la tarjeta sin cobrar. Útil para hoteles, alquiler de vehículos, etc.
+La pre-autorización reserva fondos en la tarjeta sin cobrar.
 
 ```typescript
 // Paso 1: Pre-autorizar (reservar fondos)
@@ -424,11 +424,11 @@ const resultadoPreAuth = await cliente.payments.preAuthorize(intencionDePago);
 const ticketId = resultadoPreAuth.ticketId!;
 console.log('Fondos reservados. ID del ticket:', ticketId);
 
-// Paso 2: Más tarde, capturar el cobro real (puede ser menor o igual al monto pre-autorizado)
-const resultadoCaptura = await cliente.payments.capture(ticketId, 45000); // Cobrar 45.000 en lugar de 50.000
+// Paso 2: Capturar el cobro real
+const resultadoCaptura = await cliente.payments.capture(ticketId, 45000);
 console.log('¡Cobrado!', resultadoCaptura.tranState);
 
-// O cancelar la reserva (anular) sin cobrar
+// O anular la reserva sin cobrar
 await cliente.payments.void(ticketId);
 console.log('Reserva cancelada, cliente no cobrado.');
 ```
@@ -437,9 +437,9 @@ console.log('Reserva cancelada, cliente no cobrado.');
 
 | Campo | Descripción |
 |---|---|
-| `returnCode` | `'SUCCESS'` si la llamada a la API fue exitosa (¡no significa que el pago fue aprobado!) |
+| `returnCode` | `'SUCCESS'` si la llamada fue exitosa (¡no significa que el pago fue aprobado!) |
 | `ticketId` | ID único de transacción de ecollect — **guárdelo en su base de datos** |
-| `tranState` | El resultado del pago: `'OK'` = aprobado, `'NOT_AUTHORIZED'` = rechazado |
+| `tranState` | Resultado: `'OK'` = aprobado, `'NOT_AUTHORIZED'` = rechazado |
 | `trazabilityCode` | Número de referencia del banco para conciliación |
 | `transValue` | Monto final cobrado |
 | `bankProcessDate` | Fecha y hora en que el banco procesó la transacción |
@@ -449,32 +449,19 @@ console.log('Reserva cancelada, cliente no cobrado.');
 
 ## 9. Obtener sistemas de pago disponibles
 
-Muestre los métodos de pago disponibles para su país/entidad al usuario:
-
 ```typescript
-import { EcollectClient } from 'ecollect-sdk';
-
-const cliente = new EcollectClient({
-  apiKey: 'SU_CLAVE_DE_API_AQUI',
-  etyCode: 50039,
-  environment: 'test',
-});
-
-// Obtener la lista de sistemas de pago configurados para su entidad
 const sistemasDePago = await cliente.paymentSystems.list();
 
 for (const sp of sistemasDePago) {
-  console.log('Código del sistema de pago:', sp.paymentSystem);
-  // Códigos de sistema de pago:
-  //   '0'   = PSE (transferencias bancarias colombianas)
-  //   '1'   = Tarjetas de crédito/débito (Colombia)
-  //   '7'   = SPEI (transferencias bancarias mexicanas)
-  //   '10'  = Enlace de pago
-  //   '100' = Pago en efectivo
+  console.log('Código:', sp.paymentSystem);
+  // '0'   = PSE (transferencias bancarias colombianas)
+  // '1'   = Tarjetas de crédito/débito (Colombia)
+  // '7'   = SPEI (transferencias bancarias mexicanas)
+  // '10'  = Enlace de pago
+  // '100' = Pago en efectivo
 
-  console.log('Imagen de marca:', sp.brandImageUrl); // Muestre este logo en su interfaz
+  console.log('Imagen de marca:', sp.brandImageUrl);
 
-  // Para sistemas de tarjetas, listar los bancos disponibles
   if (sp.financialInstitutions) {
     for (const fi of sp.financialInstitutions) {
       console.log(`  Banco: ${fi.fiName} (código: ${fi.fiCode})`);
@@ -487,60 +474,36 @@ for (const sp of sistemasDePago) {
 
 ## 10. Consultar el estado de una transacción
 
-Después de un pago, puede consultar su estado actual en cualquier momento usando el `ticketId`:
-
 ```typescript
-import { EcollectClient } from 'ecollect-sdk';
-
-const cliente = new EcollectClient({
-  apiKey: 'SU_CLAVE_DE_API_AQUI',
-  etyCode: 50039,
-  environment: 'test',
-});
-
-// Consultar una transacción específica por ticketId
 const estado = await cliente.reconciliation.getTransactionStatus(987654);
 
 console.log('Estado de la transacción:', estado.tranState);
-// Estados posibles:
-//   'OK'             — Pago aprobado y liquidado ✅
-//   'NOT_AUTHORIZED' — El banco rechazó el pago ❌
-//   'PENDING'        — Aún en proceso (p. ej., transferencia PSE en curso)
-//   'BANK'           — Enviado al banco, esperando confirmación
-//   'CAPTURED'       — La pre-autorización fue capturada
-//   'CREATED'        — Transacción creada pero aún no procesada
-//   'EXPIRED'        — La transacción expiró sin ser pagada
-//   'FAILED'         — Error técnico
+// 'OK'             — Pago aprobado y liquidado ✅
+// 'NOT_AUTHORIZED' — El banco rechazó el pago ❌
+// 'PENDING'        — Aún en proceso (p. ej., transferencia PSE en curso)
+// 'BANK'           — Enviado al banco, esperando confirmación
+// 'CAPTURED'       — La pre-autorización fue capturada
+// 'CREATED'        — Transacción creada pero aún no procesada
+// 'EXPIRED'        — La transacción expiró sin ser pagada
+// 'FAILED'         — Error técnico
 
 console.log('Monto cobrado:', estado.transValue);
-console.log('Moneda:', estado.payCurrency);
 console.log('Referencia bancaria:', estado.trazabilityCode);
-
-// También puede incluir su merchantTransactionId para cruce de información
-const estadoPorOrden = await cliente.reconciliation.getTransactionStatus(
-  987654,
-  'ORDEN-2024-001', // Su merchantTransactionId
-);
 ```
 
-### Sondeo automático (esperar el estado final)
-
-Para métodos de pago asíncronos como PSE o SPEI, el pago puede tardar unos minutos. El SDK puede hacer sondeo automático hasta alcanzar un estado final:
+### Sondeo automático
 
 ```typescript
 import { PollingTimeoutException } from 'ecollect-sdk';
 
 try {
-  // Esperar hasta 10 minutos para que la transacción alcance un estado final
   const resultadoFinal = await cliente.reconciliation.reconciliate(
-    987654,      // ticketId
-    600_000,     // tiempo límite en milisegundos (10 minutos)
+    987654,    // ticketId
+    600_000,   // tiempo límite en milisegundos (10 minutos)
   );
 
   if (resultadoFinal.tranState === 'OK') {
     console.log('¡Pago completado exitosamente!');
-  } else {
-    console.log('El pago no se completó:', resultadoFinal.tranState);
   }
 } catch (err) {
   if (err instanceof PollingTimeoutException) {
@@ -553,9 +516,7 @@ try {
 
 ## 11. Verificación de webhooks
 
-Cuando un pago se completa (o falla), ecollect envía una solicitud POST a su `responseUrl`. Debe verificar que la solicitud proviene genuinamente de ecollect antes de confiar en ella.
-
-### Configurar un endpoint de webhook (ejemplo con Express.js)
+Cuando un pago se completa, ecollect envía un POST a su `responseUrl`. Debe verificar que proviene genuinamente de ecollect.
 
 ```typescript
 import express from 'express';
@@ -575,16 +536,12 @@ app.post('/webhooks/ecollect', async (req, res) => {
   const payload = req.body as WebhookPayload;
 
   try {
-    // Verificar que el webhook es genuino llamando a la API verifySessionToken de ecollect.
-    // Esto comprueba que el SessionToken en el payload pertenece a su entidad.
+    // Verificar que el webhook es genuino mediante la API verifySessionToken de ecollect
     const tokenSesion = await cliente.session.getActive();
     const resultado = await cliente.webhooks.confirmWebhook(payload, tokenSesion);
 
-    console.log('¡Webhook verificado! Estado de transacción:', resultado.tranState);
-    console.log('ID del ticket:', resultado.ticketId);
-    console.log('Monto:', resultado.transValue, resultado.payCurrency);
+    console.log('¡Webhook verificado! Estado:', resultado.tranState);
 
-    // Actualice su base de datos según resultado.tranState
     if (resultado.tranState === 'OK') {
       // Marcar la orden como pagada en su base de datos
       await marcarOrdenComoPagada(resultado.ticketId!, resultado.trazabilityCode!);
@@ -595,7 +552,7 @@ app.post('/webhooks/ecollect', async (req, res) => {
 
   } catch (err) {
     if (err instanceof WebhookValidationException) {
-      console.error('Webhook inválido — posible intento de falsificación:', err.message);
+      console.error('Webhook inválido:', err.message);
       res.status(400).json({ ReturnCode: 'FAIL_SYSTEM' });
     } else {
       throw err;
@@ -604,15 +561,13 @@ app.post('/webhooks/ecollect', async (req, res) => {
 });
 ```
 
-### Verificación de firma HMAC (capa adicional opcional)
-
-Si ecollect también envía un encabezado de firma HMAC, puede verificarlo:
+### Verificación de firma HMAC (opcional)
 
 ```typescript
 const esValido = await cliente.webhooks.verifyWebhookSignature(
-  req.body,                                    // El payload JSON parseado
-  req.headers['x-ecollect-sig'] as string,     // El encabezado de firma
-  'SU_SECRETO_DE_WEBHOOK',                     // Su secreto de webhook del panel
+  req.body,
+  req.headers['x-ecollect-sig'] as string,
+  'SU_SECRETO_DE_WEBHOOK',
 );
 
 if (!esValido) {
@@ -625,8 +580,6 @@ if (!esValido) {
 
 ## 12. Manejo de errores
 
-Cada error del SDK extiende `EcollectError`, que a su vez extiende el `Error` estándar de JavaScript. Esto significa que puede usar bloques `try/catch` normales y verificar el tipo específico de error.
-
 ```typescript
 import {
   EcollectError,
@@ -637,80 +590,60 @@ import {
   ValidationException,
   NetworkRetryableException,
   DuplicateTransactionException,
-  DuplicateInvoiceException,
   AuthenticationException,
   WebhookValidationException,
-  CustomerNotFoundException,
   CardMismatchException,
-  TicketNotFoundException,
   PollingTimeoutException,
-  PolicyConfigException,
   InvalidConfigException,
 } from 'ecollect-sdk';
 
 try {
   const resultado = await cliente.payments.process(intencionDePago);
-  // Manejar el éxito...
 } catch (err) {
 
   if (err instanceof InvalidCardException) {
-    // El número de tarjeta falló la validación de Luhn, o la fecha de vencimiento es incorrecta
-    console.error('La tarjeta es inválida:', err.message);
-    // Indique al usuario que verifique el número de tarjeta y la fecha de vencimiento
+    // Número de tarjeta inválido o fecha de vencimiento incorrecta
+    console.error('Tarjeta inválida:', err.message);
 
   } else if (err instanceof InsufficientFundsException) {
-    // El banco rechazó el pago por fondos insuficientes
-    console.error('Fondos insuficientes');
-    // Indique al usuario que intente con otra tarjeta
+    // El banco rechazó por fondos insuficientes
+    console.error('Fondos insuficientes — solicite al usuario otra tarjeta');
 
   } else if (err instanceof DuplicateTransactionException) {
-    // merchantTransactionId ya fue usado en otra transacción
+    // merchantTransactionId ya fue usado
     console.error('ID de orden duplicado — genere un nuevo merchantTransactionId');
 
-  } else if (err instanceof DuplicateInvoiceException) {
-    // El número de factura ya existe en otra transacción
-    console.error('Factura duplicada:', err.message);
-
   } else if (err instanceof TokenNotFoundException) {
-    // El tokenId proporcionado no existe o ya fue eliminado
-    console.error('Tarjeta guardada no encontrada — solicite al cliente que ingrese la tarjeta nuevamente');
-
-  } else if (err instanceof SessionExpiredException) {
-    // Esto rara vez debería ocurrir porque el SDK reintenta automáticamente
-    console.error('La sesión expiró inesperadamente');
+    // El tokenId no existe o ya fue eliminado
+    console.error('Tarjeta guardada no encontrada — solicite al cliente ingresar la tarjeta nuevamente');
 
   } else if (err instanceof ValidationException) {
-    // Un campo requerido falta o tiene un valor inválido
+    // Campo requerido faltante o inválido
     console.error('Error de validación:', err.message);
 
   } else if (err instanceof NetworkRetryableException) {
-    // Un error temporal del servidor. El SDK ya reintentó maxRetries veces.
-    console.error('ecollect no está disponible temporalmente. Intente más tarde.');
+    // Error temporal del servidor, reintentos agotados
+    console.error('ecollect no disponible temporalmente. Intente más tarde.');
 
   } else if (err instanceof AuthenticationException) {
-    // Su clave de API o código de entidad es incorrecto, o el comercio está bloqueado
-    console.error('Autenticación fallida — verifique su apiKey y etyCode');
+    // Clave de API o código de entidad incorrecto
+    console.error('Autenticación fallida — verifique apiKey y etyCode');
 
   } else if (err instanceof CardMismatchException) {
-    // La tarjeta ya fue tokenizada bajo la cuenta de otro usuario
+    // Tarjeta vinculada a un usuario diferente
     console.error('La tarjeta pertenece a un usuario diferente');
 
-  } else if (err instanceof PolicyConfigException) {
-    // El policyCode es inválido o no está configurado para su entidad
-    console.error('Código de política inválido');
-
   } else if (err instanceof InvalidConfigException) {
-    // Pasó valores incorrectos al constructor EcollectClient
+    // Argumentos incorrectos en el constructor
     console.error('SDK mal configurado:', err.message);
 
   } else if (err instanceof EcollectError) {
-    // Cualquier otro error específico de ecollect no capturado arriba
+    // Cualquier otro error de ecollect
     console.error(`Error de ecollect [${err.code}]:`, err.message);
-    console.error('Código de retorno crudo:', err.returnCode);
+    console.error('Código de retorno:', err.returnCode);
 
   } else {
-    // Un error inesperado genuino (corte de red, error, etc.)
-    throw err; // Relanzar para que su manejador de errores global lo vea
+    throw err; // Error inesperado genuino
   }
 }
 ```
@@ -747,27 +680,27 @@ try {
 
 ```typescript
 const cliente = new EcollectClient({
-  apiKey: 'SU_CLAVE_DE_API_DE_PRUEBAS',
-  etyCode: 50039,          // Código de entidad de pruebas
-  environment: 'test',     // Usa https://test1.e-collect.com/app_express/api/
+  apiKey: 'SU_CLAVE_DE_PRUEBAS',
+  etyCode: 50039,
+  environment: 'test', // Usa https://test1.e-collect.com/app_express/api/
 });
 ```
 
 - **No cobra dinero real**
 - Tarjeta de prueba: `4296005885355275`, vencimiento `12/2025`, cualquier CVV
-- Titular de prueba: David Caballero, CC 123456799, FiCode 190
+- Titular: David Caballero, CC 123456799, FiCode 190
 
 ### Entorno de producción
 
 ```typescript
 const cliente = new EcollectClient({
-  apiKey: 'SU_CLAVE_DE_API_DE_PRODUCCION',  // ¡Clave diferente a la de pruebas!
-  etyCode: 12345,                             // Su código de entidad real
-  environment: 'prod',                        // Usa https://www.e-collect.com/app_Express/api/
+  apiKey: 'SU_CLAVE_DE_PRODUCCION',   // ¡Diferente a la de pruebas!
+  etyCode: 12345,
+  environment: 'prod',                 // Usa https://www.e-collect.com/app_Express/api/
 });
 ```
 
-> ⚠️ **Nunca incluya credenciales de producción en el código fuente.** Use variables de entorno:
+> ⚠️ **Nunca incluya credenciales en el código fuente.** Use variables de entorno:
 
 ```typescript
 const cliente = new EcollectClient({
@@ -777,28 +710,22 @@ const cliente = new EcollectClient({
 });
 ```
 
-Su archivo `.env` (agréguelo a `.gitignore` — ¡nunca lo confirme en git!):
+Archivo `.env` (agréguelo a `.gitignore`):
 
 ```
-ECOLLECT_API_KEY=su-clave-de-api-secreta
+ECOLLECT_API_KEY=su-clave-secreta
 ECOLLECT_ETY_CODE=50039
 ECOLLECT_ENV=test
 ```
-
-> 📌 Nota: en producción, `getTransactionInformation` usa automáticamente `https://m.e-collect.com/app_Express/api/GetTransactionInformation` — el SDK maneja este cambio de URL por usted.
 
 ---
 
 ## 14. Ejemplo completo de principio a fin
 
-Este es un script completo y ejecutable que cubre: configuración → guardar una tarjeta → pagar con la tarjeta guardada → consultar el estado de la transacción.
-
 ```typescript
 /**
  * SDK de ecollect — ejemplo completo de principio a fin
- *
  * Ejecutar con: npx ts-node ejemplo.ts
- * O compilar primero: npx tsc && node dist/ejemplo.js
  */
 
 import {
@@ -811,53 +738,47 @@ import type { CardData, PaymentIntent } from 'ecollect-sdk';
 
 // ─── 1. Inicializar el cliente ────────────────────────────────────────────
 const cliente = new EcollectClient({
-  apiKey: 'SU_CLAVE_DE_API_DE_PRUEBAS',   // Del panel de control de ecollect
-  etyCode: 50039,                           // Código de entidad de pruebas
-  environment: 'test',                      // Entorno de pruebas — no cobra dinero real
-  srvCode: 1001,                            // Su código de servicio predeterminado
+  apiKey: 'SU_CLAVE_DE_PRUEBAS',
+  etyCode: 50039,
+  environment: 'test',
+  srvCode: 1001,
   logLevel: 'info',
 });
 
 async function principal() {
-  // ─── 2. Guardar un token de tarjeta ──────────────────────────────────────
+  // ─── 2. Guardar token de tarjeta ──────────────────────────────────────────
   console.log('\n📦 Guardando token de tarjeta...');
 
   const tarjeta: CardData = {
-    cardNumber: '4296005885355275',  // Número de tarjeta Visa de prueba
-    expirationDate: '12/2025',       // Formato MM/YYYY
-    secureCode: '123',               // CVV
+    cardNumber: '4296005885355275',
+    expirationDate: '12/2025',
+    secureCode: '123',
     cardHolderName: 'David Caballero',
-    cardHolderIdType: 'CC',          // CC = Cédula de ciudadanía colombiana
+    cardHolderIdType: 'CC',
     cardHolderId: '123456799',
-    paymentSystem: '1',              // '1' = Visa Colombia
-    fiCode: '190',                   // Código de institución financiera de prueba
+    paymentSystem: '1',
+    fiCode: '190',
     email: 'david.caballero@ecollect.co',
   };
 
   const tarjetaGuardada = await cliente.tokens.save(tarjeta);
   console.log('✅ ¡Tarjeta guardada!');
-  console.log('   ID del token:', tarjetaGuardada.tokenId);  // ¡Guárdelo en su BD!
+  console.log('   ID del token:', tarjetaGuardada.tokenId); // ¡Guárdelo en su BD!
   console.log('   Enmascarada:', tarjetaGuardada.maskedCard);
 
-  // ─── 3. Listar tarjetas guardadas ────────────────────────────────────────
+  // ─── 3. Listar tarjetas guardadas ─────────────────────────────────────────
   console.log('\n📋 Listando tarjetas guardadas...');
-  const tarjetas = await cliente.tokens.list(
-    'david.caballero@ecollect.co',
-    '123456799',
-  );
-  console.log(`✅ Se encontraron ${tarjetas.length} tarjeta(s) guardada(s).`);
+  const tarjetas = await cliente.tokens.list('david.caballero@ecollect.co', '123456799');
+  console.log(`✅ Se encontraron ${tarjetas.length} tarjeta(s).`);
 
-  // ─── 4. Procesar un pago con el token guardado ───────────────────────────
+  // ─── 4. Procesar pago con token ───────────────────────────────────────────
   console.log('\n💳 Procesando pago...');
 
   const intencionDePago: PaymentIntent = {
-    amount: 50000,                   // 50.000 pesos colombianos
-    vatAmount: 7983,                 // Porción de IVA
+    amount: 50000,
+    vatAmount: 7983,
     currency: 'COP',
-
-    // Use Date.now() o una librería UUID para garantizar unicidad
-    merchantTransactionId: `ORDEN-${Date.now()}`,
-
+    merchantTransactionId: `ORDEN-${Date.now()}`, // Único por transacción
     customer: {
       fullName: 'David Caballero',
       email: 'david.caballero@ecollect.co',
@@ -865,44 +786,38 @@ async function principal() {
       documentType: 'CC',
       documentNumber: '123456799',
     },
-
-    // Usar el token que acabamos de guardar en lugar de pedir la tarjeta nuevamente
-    tokenId: tarjetaGuardada.tokenId,
+    tokenId: tarjetaGuardada.tokenId, // Usar el token guardado
     paymentSystem: '1',
     fiCode: '190',
     secureCode: '123',
     installments: 1,
-
-    // ecollect envía el resultado aquí cuando el pago finaliza
     responseUrl: 'https://susitio.com/webhooks/ecollect',
   };
 
   const resultado = await cliente.payments.process(intencionDePago);
   console.log('✅ ¡Pago procesado!');
-  console.log('   ID del ticket:', resultado.ticketId);     // ¡Guárdelo en su BD!
-  console.log('   Estado:', resultado.tranState);            // 'OK' = aprobado
+  console.log('   ID del ticket:', resultado.ticketId);
+  console.log('   Estado:', resultado.tranState);
   console.log('   Trazabilidad:', resultado.trazabilityCode);
 
-  // ─── 5. Consultar estado de la transacción ────────────────────────────────
+  // ─── 5. Consultar estado ──────────────────────────────────────────────────
   if (resultado.ticketId) {
-    console.log('\n🔍 Consultando estado de la transacción...');
+    console.log('\n🔍 Consultando estado...');
     const estado = await cliente.reconciliation.getTransactionStatus(resultado.ticketId);
     console.log('   Estado final:', estado.tranState);
     console.log('   Monto cobrado:', estado.transValue, estado.payCurrency);
-    console.log('   Fecha bancaria:', estado.bankProcessDate);
   }
 
-  // ─── 6. Obtener sistemas de pago disponibles ─────────────────────────────
+  // ─── 6. Sistemas de pago disponibles ─────────────────────────────────────
   console.log('\n🏦 Sistemas de pago disponibles:');
-  const sistemasDePago = await cliente.paymentSystems.list();
-  for (const sp of sistemasDePago) {
+  const sistemas = await cliente.paymentSystems.list();
+  for (const sp of sistemas) {
     console.log('  -', sp.paymentSystem, '→', sp.brandImageUrl ?? '(sin imagen)');
   }
 
   console.log('\n🎉 ¡Todo listo!');
 }
 
-// ─── Ejecutar con manejo de errores ──────────────────────────────────────────
 principal().catch((err) => {
   if (err instanceof InvalidCardException) {
     console.error('❌ Tarjeta inválida:', err.message);
@@ -923,52 +838,43 @@ principal().catch((err) => {
 
 ### TypeScript (recomendado)
 
-El SDK fue escrito en TypeScript e incluye declaraciones de tipo completas. Obtendrá autocompletado, documentación en línea y verificación de tipos en tiempo de compilación de forma gratuita.
-
 ```typescript
-// TypeScript — tipos completos disponibles, detecta errores en tiempo de compilación
 import { EcollectClient } from 'ecollect-sdk';
 import type { PaymentIntent, TransactionResult, SavedCard } from 'ecollect-sdk';
 
+// TypeScript verifica los tipos en tiempo de compilación — detecta errores antes de ejecutar
 const intencion: PaymentIntent = {
   amount: 50000,
   currency: 'COP',
   customer: { fullName: 'David Caballero', email: 'david@ejemplo.com' },
-  // TypeScript mostrará un error si olvida un campo requerido
 };
-
-const resultado: TransactionResult = await cliente.payments.process(intencion);
 ```
 
 ### JavaScript (ESM)
 
 ```javascript
-// JavaScript ESM — sin verificación de tipos en tiempo de compilación, pero la misma API
 import { EcollectClient } from 'ecollect-sdk';
 
 const cliente = new EcollectClient({
-  apiKey: 'SU_CLAVE_DE_API_AQUI',
+  apiKey: 'SU_CLAVE_AQUI',
   etyCode: 50039,
   environment: 'test',
 });
-
-const resultado = await cliente.payments.process(intencion);
 ```
 
 ### JavaScript (CommonJS)
 
 ```javascript
-// JavaScript CommonJS (estilo antiguo de Node.js / sintaxis require)
 const { EcollectClient } = require('ecollect-sdk');
 
 const cliente = new EcollectClient({
-  apiKey: 'SU_CLAVE_DE_API_AQUI',
+  apiKey: 'SU_CLAVE_AQUI',
   etyCode: 50039,
   environment: 'test',
 });
 ```
 
-> 💡 **Consejo para CommonJS:** si obtiene `ERR_REQUIRE_ESM`, significa que el SDK usa módulos ES. Cambie a la sintaxis `import` o use importación dinámica: `const { EcollectClient } = await import('ecollect-sdk')`.
+> 💡 Si obtiene `ERR_REQUIRE_ESM`, use `import` o `const { EcollectClient } = await import('ecollect-sdk')`.
 
 ---
 
@@ -976,43 +882,35 @@ const cliente = new EcollectClient({
 
 ### "apiKey is required"
 
-**Causa:** Pasó una cadena vacía u olvidó `apiKey` en el constructor.
-
 ```typescript
 // ❌ Incorrecto
-const cliente = new EcollectClient({ apiKey: '', etyCode: 50039, environment: 'test' });
+new EcollectClient({ apiKey: '', etyCode: 50039, environment: 'test' });
 
 // ✅ Correcto
-const cliente = new EcollectClient({ apiKey: 'mi-clave-real', etyCode: 50039, environment: 'test' });
+new EcollectClient({ apiKey: 'mi-clave-real', etyCode: 50039, environment: 'test' });
 ```
 
 ### "etyCode must be a positive integer"
 
-**Causa:** Pasó `0`, `null` o una cadena como `etyCode`.
-
 ```typescript
-// ❌ Incorrecto
-const cliente = new EcollectClient({ apiKey: 'clave', etyCode: 0, environment: 'test' });
+// ❌ Incorrecto — etyCode no puede ser 0
+new EcollectClient({ apiKey: 'clave', etyCode: 0, environment: 'test' });
 
 // ✅ Correcto
-const cliente = new EcollectClient({ apiKey: 'clave', etyCode: 50039, environment: 'test' });
+new EcollectClient({ apiKey: 'clave', etyCode: 50039, environment: 'test' });
 ```
 
 ### "srvCode is required"
 
-**Causa:** No definió `srvCode` en el constructor ni en `PaymentIntent`.
-
 ```typescript
-// ✅ Opción 1: definirlo en el constructor (aplica a todos los pagos)
-const cliente = new EcollectClient({ ..., srvCode: 1001 });
+// ✅ Opción 1: en el constructor
+new EcollectClient({ ..., srvCode: 1001 });
 
-// ✅ Opción 2: definirlo por pago
+// ✅ Opción 2: por pago
 const intencion: PaymentIntent = { ..., srvCode: 1001 };
 ```
 
 ### "Card number is invalid (Luhn check failed)"
-
-**Causa:** El número de tarjeta no pasa el algoritmo de Luhn. Esto se verifica localmente antes de cualquier llamada HTTP.
 
 ```typescript
 // Use el número de tarjeta de prueba:
@@ -1021,21 +919,15 @@ cardNumber: '4296005885355275'
 
 ### `FAIL_INVALIDENTITYCODE`
 
-**Causa:** Su `etyCode` es incorrecto o no existe en el entorno.
-
-**Solución:** Verifique el código de entidad en el panel de control de ecollect. Las pruebas y producción usan códigos diferentes.
+Verifique que `etyCode` sea correcto para el entorno elegido (pruebas y producción usan códigos diferentes).
 
 ### `FAIL_ACCESSDENIED`
 
-**Causa:** Su clave de API es incorrecta, ha sido revocada, o su cuenta de comercio está inactiva.
-
-**Solución:** Inicie sesión en el panel de ecollect, regenere su clave de API y actualice su archivo `.env`.
+Su clave de API es incorrecta o fue revocada. Regenere la clave en el panel de ecollect.
 
 ### `FAIL_MERCHANTRANSID`
 
-**Causa:** Usó el mismo `merchantTransactionId` dos veces.
-
-**Solución:** Genere un ID único para cada transacción (p. ej., `ORDEN-${Date.now()}` o una librería UUID).
+Está reutilizando un `merchantTransactionId`. Use `ORDER-${Date.now()}` o un UUID para garantizar unicidad.
 
 ---
 
@@ -1043,61 +935,50 @@ cardNumber: '4296005885355275'
 
 **P: ¿Necesito llamar a `getSessionToken` yo mismo?**
 
-No. El SDK lo llama automáticamente antes de la primera solicitud a la API y lo refresca transparentemente cuando expira. Nunca necesita gestionar los tokens de sesión.
+No. El SDK lo gestiona automáticamente.
 
 ---
 
 **P: ¿Dónde obtengo mi clave de API y código de entidad?**
 
-Inicie sesión en el panel de control de ecollect y navegue a **Credenciales de API**. Su `apiKey` y `etyCode` se muestran allí. Si no tiene acceso al panel, contacte a su representante de cuenta en ecollect.
+En el panel de control de ecollect, sección **Credenciales de API**. Si no tiene acceso, contacte a su representante de ecollect.
 
 ---
 
 **P: ¿El entorno de pruebas cobrará mi tarjeta?**
 
-No. El entorno de pruebas (`environment: 'test'`) es un sandbox completo y **nunca cobra ninguna tarjeta**. Úselo libremente durante el desarrollo.
+No. Es un sandbox completo que nunca cobra dinero real.
 
 ---
 
-**P: ¿Puedo usar el SDK en el navegador (frontend)?**
+**P: ¿Puedo usar el SDK en el navegador?**
 
-El SDK está diseñado para uso en el **lado del servidor** (Node.js, funciones serverless). Su `apiKey` debe mantenerse en secreto y nunca debe exponerse en el código del navegador. Si necesita un formulario de pago en el frontend, use el pago alojado de ecollect — redirija a los usuarios a `resultado.eCollectUrl`.
+No. El SDK es para uso en el lado del servidor. Su clave de API debe mantenerse en secreto.
 
 ---
 
 **P: ¿Qué es un código de servicio (`srvCode`)?**
 
-Un código de servicio identifica un servicio de pago específico configurado para su cuenta de comercio (p. ej., una moneda particular, método de pago o período de liquidación). Obtiene este valor de ecollect cuando configuran su cuenta. La mayoría de los comercios tienen un código de servicio predeterminado.
+Identifica un servicio de pago específico de su cuenta. ecollect lo proporciona al configurar su comercio.
 
 ---
 
 **P: ¿Qué es un código de institución financiera (`fiCode`)?**
 
-Para pagos con tarjeta, identifica el banco adquirente. Para transferencias bancarias PSE/SPEI, identifica el banco del cliente. La lista completa de códigos válidos para su entidad se obtiene con `cliente.paymentSystems.list()`.
+Identifica el banco adquirente (para tarjetas) o el banco del cliente (para PSE/SPEI). La lista completa se obtiene con `cliente.paymentSystems.list()`.
 
 ---
 
 **P: ¿Qué ocurre si la red falla a mitad de un pago?**
 
-El SDK reintenta `maxRetries` veces (predeterminado: 3) con espera exponencial. Si todos los reintentos fallan, se lanza una `NetworkRetryableException`. Siempre consulte el estado de la transacción con `getTransactionStatus(ticketId)` antes de reintentar un pago — el pago original puede haber pasado a pesar del error de red.
+El SDK reintenta `maxRetries` veces con espera exponencial. Siempre consulte el estado con `getTransactionStatus(ticketId)` antes de reintentar.
 
 ---
 
-**P: ¿Qué es `merchantTransactionId` y debe ser único?**
+**P: ¿Cómo manejo los pagos con PSE?**
 
-Es su ID interno de orden/referencia. ecollect lo almacena junto con la transacción para que pueda encontrarla por su propio ID. **Debe ser único por transacción** — si lo reutiliza, obtendrá una `DuplicateTransactionException`.
-
----
-
-**P: ¿Cómo manejo los pagos con PSE (transferencia bancaria colombiana)?**
-
-Los pagos PSE son asíncronos — el cliente es redirigido al sitio web de su banco. El flujo es:
-
-1. Llame a `cliente.payments.process(intencion)` con `paymentSystem: '0'` (PSE) y un `redirectUrl`.
-2. Redirija al usuario a `resultado.eCollectUrl`.
-3. ecollect envía un webhook a su `responseUrl` cuando el banco confirma (o rechaza) la transferencia.
-4. Alternativamente, haga sondeo con `cliente.reconciliation.reconciliate(ticketId)`.
+PSE es asíncrono. El flujo es: procesar con `paymentSystem: '0'` → redirigir al usuario a `eCollectUrl` → recibir webhook cuando el banco confirme → o usar `reconciliate(ticketId)` para esperar.
 
 ---
 
-*Para obtener más ayuda, visite [https://www.e-collect.com](https://www.e-collect.com) o contacte al equipo de soporte de ecollect.*
+*Para más ayuda, visite [https://www.e-collect.com](https://www.e-collect.com) o contacte al equipo de soporte de ecollect.*

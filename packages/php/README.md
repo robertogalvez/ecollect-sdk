@@ -1,1072 +1,513 @@
 # ecollect PHP SDK
 
-> **Official PHP SDK for the ecollect LatAm payment gateway** — process cards, bank transfers (PSE / SPEI), save card tokens, reconcile transactions, and verify webhooks, all from any PHP application.
+![PHP 7.4+](https://img.shields.io/badge/PHP-7.4%2B-777BB4?logo=php) ![Composer](https://img.shields.io/badge/Composer-required-885630?logo=composer) ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 
 ---
 
-## Table of Contents
+## 📖 What is this SDK?
 
-1. [What is ecollect?](#1-what-is-ecollect)
-2. [Prerequisites](#2-prerequisites)
-3. [Installation](#3-installation)
-4. [Setup — Initializing the Client](#4-setup--initializing-the-client)
-5. [How Session Tokens Work](#5-how-session-tokens-work)
-6. [Saving a Card Token](#6-saving-a-card-token)
-7. [Listing Saved Tokens](#7-listing-saved-tokens)
-8. [Processing a Payment](#8-processing-a-payment)
-9. [Getting Available Payment Systems](#9-getting-available-payment-systems)
-10. [Checking Transaction Status](#10-checking-transaction-status)
-11. [Webhook Signature Verification](#11-webhook-signature-verification)
-12. [Error Handling](#12-error-handling)
-13. [Test vs Production](#13-test-vs-production)
-14. [Full End-to-End Example](#14-full-end-to-end-example)
-15. [Common Errors](#15-common-errors)
-16. [Frequently Asked Questions](#16-frequently-asked-questions)
+The **ecollect PHP SDK** is the official client library for integrating the ecollect LatAm payment gateway into any PHP application. It supports Colombia, Mexico, and the Dominican Republic, and handles session management, card tokenization, payments, and transaction reconciliation automatically — letting you go from zero to live payments with just a few lines of PHP.
 
 ---
 
-## 1. What is ecollect?
+## ✅ Prerequisites
 
-ecollect is a LatAm-focused payment gateway that lets merchants accept credit cards, debit cards, bank transfers (PSE in Colombia, SPEI in Mexico), cash payments, and more — all through a single, unified API. This SDK wraps that API so you can integrate it in minutes without dealing with raw HTTP requests, session management, retry logic, or signature verification.
+Before you begin, make sure you have:
 
-**The SDK handles everything for you:**
-- Authenticating with your API credentials automatically
-- Renewing expired session tokens transparently
-- Retrying transient network errors with exponential back-off
-- Mapping every API error code to a meaningful PHP exception
-- Validating card numbers (Luhn check) and expiration dates before any network call
-
-> ☁️ **Test environment note:** The test environment (`'environment' => 'test'`) **does not charge real money**. You can run every example in this guide safely. Your API key and entity code for the test environment come from the **ecollect merchant dashboard**.
+- **PHP 7.4 or higher** (PHP 8.x is fully supported and recommended)
+- **Composer** installed globally — [Get Composer](https://getcomposer.org/)
+- The `curl` and `json` PHP extensions enabled (on by default in most environments)
+- An ecollect account with a valid **API Key** and **EntityCode** (provided by ecollect when you sign up)
 
 ---
 
-## 2. Prerequisites
-
-| Requirement | Minimum version | Notes |
-|---|---|---|
-| **PHP** | 7.4 | Required for typed properties and null coalescing |
-| **Composer** | 2.x | PHP dependency manager |
-| **ext-json** | any | Usually enabled by default |
-| **ext-curl** | any | Required by Guzzle HTTP client |
-
-Check your PHP version:
-
-```bash
-php --version
-# Should print PHP 7.4.x or higher
-```
-
-Check Composer is installed:
-
-```bash
-composer --version
-# Should print Composer version 2.x.x
-```
-
-If Composer is not installed, download it from [https://getcomposer.org](https://getcomposer.org).
-
----
-
-## 3. Installation
-
-Run the following command inside your project directory:
+## 📦 Installation
 
 ```bash
 composer require ecollect/sdk
 ```
 
-Composer will automatically install the SDK and its only runtime dependency, [Guzzle HTTP](https://docs.guzzlephp.org) (a popular HTTP client for PHP).
-
-After installation your `composer.json` will include:
-
-```json
-{
-    "require": {
-        "ecollect/sdk": "^1.0"
-    }
-}
-```
-
-Make sure your PHP files include the Composer autoloader at the top:
+After installation, make sure your project includes Composer's autoloader:
 
 ```php
 <?php
-
-// This one line loads the SDK and all its classes automatically
 require_once __DIR__ . '/vendor/autoload.php';
 ```
 
 ---
 
-## 4. Setup — Initializing the Client
+## ⚙️ Initial Setup
 
-`EcollectClient` is the single entry point for everything in the SDK. Create it once and reuse it throughout your application.
+Create a client instance once and reuse it. In a framework like Laravel you would bind it in a service provider; in plain PHP just include a shared bootstrap file:
 
 ```php
 <?php
-
-require_once __DIR__ . '/vendor/autoload.php';
-
 use Ecollect\EcollectClient;
 
 $client = new EcollectClient([
-    // 🔑 Your private API key from the ecollect merchant dashboard
+    // ─────────────────────────────────────────────────────────────────────
+    // REQUIRED — Your API key from the ecollect merchant dashboard
     'api_key'     => 'YOUR_API_KEY_HERE',
 
-    // 🏪 Your entity/merchant code from the ecollect merchant dashboard
-    'ety_code'    => 50039,
+    // REQUIRED — Your entity code, assigned by ecollect (e.g. "50039")
+    'entity_code' => 'YOUR_ENTITY_CODE',
 
-    // 🌍 Environment: 'test' for development, 'prod' for live payments
-    'environment' => 'test',
+    // OPTIONAL — Set to true to use the TEST/sandbox environment.
+    // Always use sandbox mode during development! Default: false
+    'sandbox'     => true,
 
-    // 🔢 Default service code. You can override this per-payment.
-    // Ask your ecollect account manager for this value.
-    'srv_code'    => 1001,
+    // OPTIONAL — Request timeout in seconds. Default: 30
+    'timeout'     => 30,
 
-    // 📝 Log level: 'debug', 'info', 'warn', or 'error' (default: 'info')
-    'log_level'   => 'info',
+    // OPTIONAL — Number of automatic retries on network failure. Default: 2
+    'retries'     => 2,
 
-    // 🔄 How many times to retry failed requests automatically (default: 3)
-    'max_retries' => 3,
-
-    // ⏱️ Delay in milliseconds before the first retry (doubles on each retry, default: 2000)
-    'initial_backoff_ms' => 2000,
+    // OPTIONAL — Enable verbose debug output (logs to error_log). Default: false
+    'debug'       => false,
 ]);
-```
-
-### Config option reference
-
-| Key | Type | Required | Default | Description |
-|---|---|---|---|---|
-| `api_key` | `string` | ✅ Yes | — | Your private API key from the ecollect dashboard |
-| `ety_code` | `int` | ✅ Yes | — | Your merchant/entity code from the ecollect dashboard |
-| `environment` | `string` | ✅ Yes | — | `'test'` for sandbox, `'prod'` for live |
-| `srv_code` | `int` | No | `0` | Default service code; can be overridden per payment |
-| `log_level` | `string` | No | `'info'` | Controls how much the SDK logs |
-| `max_retries` | `int` | No | `3` | Max automatic retries on network errors |
-| `initial_backoff_ms` | `int` | No | `2000` | First retry delay in milliseconds |
-
-> 💡 **Where do I find my API key and entity code?**
-> Log in to the ecollect merchant dashboard. Your `api_key` and `ety_code` are listed in the **API Credentials** section. If you don't have access, contact your ecollect account representative.
-
----
-
-## 5. How Session Tokens Work
-
-ecollect requires a short-lived **session token** for every API call. The SDK manages this completely automatically — you do not need to call `getSessionToken` yourself.
-
-Here is what happens behind the scenes:
-
-1. When you make the first API call (e.g., `$client->payments->process($intent)`), the SDK calls `getSessionToken` with your `api_key` and `ety_code`.
-2. The token is cached in memory for the duration of the request.
-3. On subsequent calls, the cached token is reused.
-4. If the token expires mid-request, the SDK catches the `FAIL_APIEXPIREDSESSION` response, fetches a new token, and transparently retries the original call.
-
-If you ever need to inspect or manually refresh the session token:
-
-```php
-<?php
-
-// Get the current active session token (creates one if none exists)
-$sessionToken = $client->session->getActive();
-echo 'Session token: ' . $sessionToken . PHP_EOL;
-
-// Force the SDK to throw away the cached token and create a fresh one
-$client->session->invalidate();
-$freshToken = $client->session->getActive();
-echo 'Fresh token: ' . $freshToken . PHP_EOL;
 ```
 
 ---
 
-## 6. Saving a Card Token
+## 🔑 How Sessions Work
 
-Card tokenization lets you save a customer's card securely on ecollect's servers. You receive back a `tokenId` that you store in your own database. You never store the raw card number — ecollect does, safely.
+ecollect uses a two-layer authentication model:
 
-### Full example: save a card
+1. **API Key + EntityCode** — your static credentials, never exposed to end users.
+2. **SessionToken** — a short-lived token the SDK fetches automatically before each request.
 
-```php
-<?php
+**You do not need to manage session tokens yourself.** The SDK caches the token in memory and refreshes it transparently when it expires.
 
-require_once __DIR__ . '/vendor/autoload.php';
-
-use Ecollect\EcollectClient;
-use Ecollect\Types\SavedCard;
-
-$client = new EcollectClient([
-    'api_key'     => 'YOUR_API_KEY_HERE',
-    'ety_code'    => 50039,
-    'environment' => 'test',
-]);
-
-// Build the card data array
-$cardData = [
-    // 💳 The full card number (the SDK validates it with Luhn before sending)
-    'cardNumber'        => '4296005885355275',
-
-    // 📅 Expiration date in MM/YYYY format
-    'expirationDate'    => '12/2025',
-
-    // 🔒 CVV / security code (optional but recommended)
-    'secureCode'        => '123',
-
-    // 👤 Cardholder's full name exactly as it appears on the card
-    'cardHolderName'    => 'David Caballero',
-
-    // 🪪 Document type: CC=Colombian ID, NIT=Tax ID, CI=Ecuador/Venezuela, CURP=Mexico
-    'cardHolderIdType'  => 'CC',
-
-    // 🔢 The cardholder's document number
-    'cardHolderId'      => '123456799',
-
-    // 💳 Payment system code:
-    //   '1' = Visa Colombia (CC)
-    //   '3' = VISANET Dominican Republic
-    //   '6' = CARDNET Dominican Republic
-    'paymentSystem'     => '1',
-
-    // 🏦 Financial institution code (provided by ecollect; 190 = test bank)
-    'fiCode'            => '190',
-
-    // 📧 Cardholder's email address
-    'email'             => 'david.caballero@ecollect.co',
-];
-
-// Save the card — returns an array with the tokenId and card details
-$savedCard = $client->tokens->save($cardData);
-
-echo '✅ Card saved successfully!' . PHP_EOL;
-echo 'Token ID: ' . $savedCard['tokenId'] . PHP_EOL;       // Store this in your database!
-echo 'Masked card: ' . ($savedCard['maskedCard'] ?? '') . PHP_EOL; // e.g., "****5275"
-echo 'Last 4 digits: ' . ($savedCard['last4'] ?? '') . PHP_EOL;
-echo 'Bank name: ' . ($savedCard['fiName'] ?? '') . PHP_EOL;
-echo 'Brand image URL: ' . ($savedCard['brandImageUrl'] ?? '') . PHP_EOL;
-```
-
-### Other token commands
+If you need the raw token value (e.g. to pass to a front-end widget):
 
 ```php
 <?php
+$tokenInfo = $client->getSessionToken();
 
-// GET — get a temporary token without permanently saving the card
-$tempToken = $client->tokens->get($cardData);
-echo 'Temporary token (expires soon): ' . $tempToken['tokenId'] . PHP_EOL;
-
-// HOLD — get a hold token for pre-authorization flows
-$holdToken = $client->tokens->hold($cardData);
-echo 'Hold token: ' . $holdToken['tokenId'] . PHP_EOL;
-
-// UPDATE — update the expiration date of an existing saved token
-$updatedCard = $client->tokens->update(
-    'existing-token-id',  // The tokenId you stored earlier
-    '06/2027',            // New expiration date in MM/YYYY format
-    '123456799'           // Cardholder document number (optional)
-);
-echo 'Updated expiry, token still valid: ' . $updatedCard['tokenId'] . PHP_EOL;
-
-// DELETE (REMOVE) — permanently delete a saved token
-$client->tokens->delete(
-    'existing-token-id',           // The tokenId to remove
-    'david.caballero@ecollect.co', // Cardholder's email
-    '123456799'                    // Cardholder's document number
-);
-echo 'Card token deleted.' . PHP_EOL;
+echo 'SessionToken: ' . $tokenInfo->sessionToken . PHP_EOL;
+echo 'Expires at  : ' . $tokenInfo->expiresAt . PHP_EOL; // ISO 8601 string
 ```
 
 ---
 
-## 7. Listing Saved Tokens
+## 💳 Save a Card Token
 
-To show a customer their saved payment methods (e.g., on a checkout page), call `queryToken`:
+Tokenizing a card stores it securely on ecollect's PCI-compliant servers and returns a **token** you use for future payments without ever handling raw card numbers:
 
 ```php
 <?php
+use Ecollect\Enums\TokenCommandAction;
 
-require_once __DIR__ . '/vendor/autoload.php';
+$result = $client->tokenCommand([
+    // ── Action ────────────────────────────────────────────────────────────
+    // TokenCommandAction::SAVE   → store a new card, returns a token
+    // TokenCommandAction::GET    → retrieve card info by token
+    // TokenCommandAction::REMOVE → permanently delete a token
+    // TokenCommandAction::UPDATE → update card details (e.g. new expiry date)
+    // TokenCommandAction::HOLD   → temporarily freeze a token
+    'action'              => TokenCommandAction::SAVE,
 
-use Ecollect\EcollectClient;
+    // ── Card details ──────────────────────────────────────────────────────
+    'card_number'         => '4296005885355275', // Full PAN — TEST card number
+    'expiration_date'     => '12/2025',           // Must be MM/YYYY
+    'payment_system'      => '1',                 // 1 = Visa, 2 = Mastercard
 
-$client = new EcollectClient([
-    'api_key'     => 'YOUR_API_KEY_HERE',
-    'ety_code'    => 50039,
-    'environment' => 'test',
+    // ── Card holder identity ──────────────────────────────────────────────
+    'card_holder_name'    => 'David Caballero',   // Exactly as on the physical card
+    'card_holder_id_type' => 'CC',                // CC = Colombian cédula | CE | NIT | PP
+    'card_holder_id'      => '123456799',          // Government-issued ID number
+
+    // ── Contact information ───────────────────────────────────────────────
+    'email'               => 'david.caballero@ecollect.co',
+    'mobile_country_code' => '1',     // Dialing code without "+" (Colombia = 57)
+    'mobile_number'       => '311111111',
+
+    // ── Financial institution ─────────────────────────────────────────────
+    // fi_code identifies the issuing bank/network. Use 190 in test environment.
+    'fi_code'             => '190',
+
+    // ── CVV ───────────────────────────────────────────────────────────────
+    // Required when your merchant risk settings demand it. NEVER store this value!
+    'cvv'                 => '123',
 ]);
 
-// List all saved cards for a specific customer
-// Both the email and document number are required for security
-$savedCards = $client->tokens->list(
-    'david.caballero@ecollect.co', // Customer's email
-    '123456799'                     // Customer's document number
-);
-
-if (empty($savedCards)) {
-    echo 'This customer has no saved cards.' . PHP_EOL;
-} else {
-    echo 'Found ' . count($savedCards) . ' saved card(s):' . PHP_EOL;
-
-    foreach ($savedCards as $card) {
-        echo '---' . PHP_EOL;
-        echo 'Token ID: ' . $card['tokenId'] . PHP_EOL;           // Use this for payments
-        echo 'Masked card: ' . ($card['maskedCard'] ?? '') . PHP_EOL; // Show to customer
-        echo 'Last 4: ' . ($card['last4'] ?? '') . PHP_EOL;
-        echo 'Bank: ' . ($card['fiName'] ?? '') . PHP_EOL;
-        echo 'Status: ' . ($card['tokenStatus'] ?? '') . PHP_EOL; // ACTIVE | VERIFY | EXPIRED
-        echo 'Requires OTP: ' . ($card['requiresOneTimePassword'] ? 'Yes' : 'No') . PHP_EOL;
-    }
-}
+// Save $result->token in your database to use for future payments
+echo 'Token saved: ' . $result->token . PHP_EOL;
 ```
 
 ---
 
-## 8. Processing a Payment
+## 🔍 Query Saved Tokens
 
-### 8.1 Payment with a new card (hosted checkout)
-
-This creates a hosted checkout URL that you redirect the user to. ecollect handles the card form.
+Retrieve all cards saved for a specific cardholder — useful for a "pick your saved card" screen:
 
 ```php
 <?php
+$cards = $client->queryToken([
+    // Search by email address...
+    'email' => 'david.caballero@ecollect.co',
 
-require_once __DIR__ . '/vendor/autoload.php';
-
-use Ecollect\EcollectClient;
-use Ecollect\Types\PaymentIntent;
-use Ecollect\Types\Customer;
-
-$client = new EcollectClient([
-    'api_key'     => 'YOUR_API_KEY_HERE',
-    'ety_code'    => 50039,
-    'environment' => 'test',
-    'srv_code'    => 1001, // Your default service code
+    // ...OR search by document type + number:
+    // 'card_holder_id_type' => 'CC',
+    // 'card_holder_id'      => '123456799',
 ]);
 
-// Build the customer object
-$customer = new Customer(
-    'David Caballero',     // Full name
-    'david.caballero@ecollect.co', // Email
-    '+1 311111111',        // Phone
-    'CC',                  // Document type (CC = Colombian national ID)
-    '123456799'            // Document number
-);
-
-// Build the payment intent
-$intent = new PaymentIntent(
-    50000,       // 💰 Amount (50,000 Colombian pesos)
-    'COP',       // 💱 Currency (ISO 4217: COP, MXN, DOP, USD)
-    $customer    // 👤 Customer information
-);
-
-// Set optional fields
-$intent->vatAmount            = 7983;                        // Tax/VAT portion
-$intent->merchantTransactionId = 'ORDER-2024-001';           // Your unique order ID
-$intent->redirectUrl          = 'https://yoursite.com/payment/success'; // After payment
-$intent->responseUrl          = 'https://yoursite.com/webhooks/ecollect'; // Webhook URL
-$intent->langCode             = 'ES';                        // Language: ES or EN
-
-// Process the payment
-$result = $client->payments->process($intent);
-
-echo 'Return code: ' . $result['returnCode'] . PHP_EOL;   // 'SUCCESS'
-echo 'Ticket ID: ' . $result['ticketId'] . PHP_EOL;       // Save this in your database!
-
-// For hosted checkout, redirect the user to this URL
-if (!empty($result['eCollectUrl'])) {
-    echo 'Redirect user to: ' . $result['eCollectUrl'] . PHP_EOL;
-    // header('Location: ' . $result['eCollectUrl']);
-    // exit;
-}
-```
-
-### 8.2 Payment with a saved card token (one-click checkout)
-
-Once you have a `tokenId` from step 6, you can charge the card directly.
-
-```php
-<?php
-
-// Build the intent with token information
-$intentWithToken = new PaymentIntent(50000, 'COP', $customer);
-$intentWithToken->merchantTransactionId = 'ORDER-2024-002'; // Must be unique!
-
-// 🪙 The tokenId from tokens->save() or tokens->list()
-$intentWithToken->tokenId      = 'the-token-id-you-saved-earlier';
-
-// Payment system and FI code associated with the saved card
-$intentWithToken->paymentSystem = '1';
-$intentWithToken->fiCode        = '190';
-
-// 🔒 CVV (required for most tokenized card payments)
-$intentWithToken->secureCode    = '123';
-
-// Optional: number of installments
-$intentWithToken->installments  = 1;
-
-$result = $client->payments->process($intentWithToken);
-echo 'Payment status: ' . ($result['tranState'] ?? '') . PHP_EOL; // 'OK' = approved!
-echo 'Trazability code: ' . ($result['trazabilityCode'] ?? '') . PHP_EOL;
-```
-
-### 8.3 Pre-authorization and capture
-
-Pre-authorization reserves funds on the card without charging. Useful for hotels, car rentals, etc.
-
-```php
-<?php
-
-// Step 1: Pre-authorize (reserve funds)
-$preAuthResult = $client->payments->preAuthorize($intent);
-$ticketId = $preAuthResult['ticketId'];
-echo 'Funds reserved. Ticket ID: ' . $ticketId . PHP_EOL;
-
-// Step 2: Later, capture the actual charge
-$captureResult = $client->payments->capture($ticketId, 45000.0); // Charge 45,000 instead of 50,000
-echo 'Charged! State: ' . ($captureResult['tranState'] ?? '') . PHP_EOL;
-
-// Or cancel the reservation (void) without charging
-$client->payments->void($ticketId);
-echo 'Reservation cancelled, customer not charged.' . PHP_EOL;
-```
-
-### Understanding the result array fields
-
-| Key | Description |
-|---|---|
-| `returnCode` | `'SUCCESS'` if the API call succeeded (does not mean the payment is approved!) |
-| `ticketId` | ecollect's unique transaction ID — **save this in your database** |
-| `tranState` | Payment outcome: `'OK'` = approved, `'NOT_AUTHORIZED'` = declined |
-| `trazabilityCode` | Bank's reference number for reconciliation |
-| `transValue` | Final charged amount |
-| `bankProcessDate` | Date/time the bank processed the transaction |
-| `eCollectUrl` | URL to redirect the user to for hosted checkout |
-
----
-
-## 9. Getting Available Payment Systems
-
-Display the available payment methods for your country/entity to the user:
-
-```php
-<?php
-
-require_once __DIR__ . '/vendor/autoload.php';
-
-use Ecollect\EcollectClient;
-
-$client = new EcollectClient([
-    'api_key'     => 'YOUR_API_KEY_HERE',
-    'ety_code'    => 50039,
-    'environment' => 'test',
-]);
-
-// Get the list of payment systems configured for your entity
-$paymentSystems = $client->paymentSystems->list();
-
-foreach ($paymentSystems as $ps) {
-    echo 'Payment system code: ' . $ps['paymentSystem'] . PHP_EOL;
-    // paymentSystem codes:
-    //   '0'   = PSE (Colombian bank transfers)
-    //   '1'   = Credit/debit cards (Colombia)
-    //   '7'   = SPEI (Mexican bank transfers)
-    //   '10'  = Payment link
-    //   '100' = Cash payment
-
-    echo 'Brand image: ' . ($ps['brandImageUrl'] ?? '(none)') . PHP_EOL;
-
-    // For card systems, list available banks
-    if (!empty($ps['financialInstitutions'])) {
-        foreach ($ps['financialInstitutions'] as $fi) {
-            echo '  Bank: ' . $fi['fiName'] . ' (code: ' . $fi['fiCode'] . ')' . PHP_EOL;
-        }
-    }
-}
-```
-
----
-
-## 10. Checking Transaction Status
-
-After a payment, you can query its current state at any time using the `ticketId`:
-
-```php
-<?php
-
-require_once __DIR__ . '/vendor/autoload.php';
-
-use Ecollect\EcollectClient;
-
-$client = new EcollectClient([
-    'api_key'     => 'YOUR_API_KEY_HERE',
-    'ety_code'    => 50039,
-    'environment' => 'test',
-]);
-
-// Query a specific transaction by ticketId
-$status = $client->reconciliation->getTransactionStatus(987654);
-
-echo 'Transaction state: ' . ($status['tranState'] ?? '') . PHP_EOL;
-// Possible states:
-//   'OK'             — Payment approved and settled ✅
-//   'NOT_AUTHORIZED' — Bank declined the payment ❌
-//   'PENDING'        — Still processing (e.g., PSE bank transfer in progress)
-//   'BANK'           — Sent to bank, awaiting confirmation
-//   'CAPTURED'       — Pre-auth was captured
-//   'CREATED'        — Transaction created but not yet processed
-//   'EXPIRED'        — Transaction expired without being paid
-//   'FAILED'         — Technical failure
-
-echo 'Amount charged: ' . ($status['transValue'] ?? '') . PHP_EOL;
-echo 'Currency: ' . ($status['payCurrency'] ?? '') . PHP_EOL;
-echo 'Bank reference: ' . ($status['trazabilityCode'] ?? '') . PHP_EOL;
-
-// You can also include your merchantTransactionId for cross-reference
-$statusByOrderId = $client->reconciliation->getTransactionStatus(
-    987654,
-    'ORDER-2024-001' // Your merchantTransactionId
-);
-```
-
-### Automatic polling (wait for final state)
-
-For async payment methods like PSE or SPEI, the payment may take a few minutes. The SDK can poll automatically:
-
-```php
-<?php
-
-use Ecollect\Exceptions\PollingTimeoutException;
-
-try {
-    // Wait up to 10 minutes for the transaction to reach a final state
-    $finalResult = $client->reconciliation->reconciliate(
-        987654,  // ticketId
-        600000   // timeout in milliseconds (10 minutes)
+foreach ($cards as $card) {
+    echo sprintf(
+        "Token: %s | Brand: %s | Last4: %s | Expires: %s\n",
+        $card->token,
+        $card->paymentSystem,
+        $card->lastFour,
+        $card->expirationDate
     );
-
-    if ($finalResult['tranState'] === 'OK') {
-        echo 'Payment completed successfully!' . PHP_EOL;
-    } else {
-        echo 'Payment did not complete: ' . $finalResult['tranState'] . PHP_EOL;
-    }
-} catch (PollingTimeoutException $e) {
-    echo 'Timed out waiting. Check status manually later.' . PHP_EOL;
 }
 ```
 
 ---
 
-## 11. Webhook Signature Verification
+## 💰 Process a Payment
 
-When a payment completes (or fails), ecollect sends a POST request to your `responseUrl`. You must verify that the request is genuinely from ecollect before trusting it.
-
-### Setting up a webhook endpoint
+### Pay with a saved token (recommended)
 
 ```php
 <?php
-// File: webhooks/ecollect.php
+$payment = $client->createTransactionPayment([
+    // ── Amount ────────────────────────────────────────────────────────────
+    'amount'              => 50000,    // Smallest currency unit
+                                        // COP: centavos | MXN: centavos | DOP: centavos
+    'currency'            => 'COP',    // ISO 4217: 'COP' | 'MXN' | 'DOP'
 
-require_once __DIR__ . '/../vendor/autoload.php';
+    // ── Saved token ───────────────────────────────────────────────────────
+    'token'               => 'SAVED_TOKEN_HERE',
 
-use Ecollect\EcollectClient;
-use Ecollect\Exceptions\WebhookValidationException;
+    // ── Order identification (must be unique per transaction!) ─────────────
+    'order_id'            => 'ORDER-' . time(),
+    'description'         => 'Monthly subscription plan A',
 
-// Parse the incoming JSON body
-$rawBody  = file_get_contents('php://input');
-$payload  = json_decode($rawBody, true);
+    // ── Cardholder (must match what was used when saving the token) ────────
+    'card_holder_name'    => 'David Caballero',
+    'card_holder_id_type' => 'CC',
+    'card_holder_id'      => '123456799',
+    'email'               => 'david.caballero@ecollect.co',
+    'mobile_country_code' => '1',
+    'mobile_number'       => '311111111',
 
-if ($payload === null) {
-    http_response_code(400);
-    echo json_encode(['ReturnCode' => 'FAIL_SYSTEM']);
-    exit;
-}
-
-$client = new EcollectClient([
-    'api_key'     => 'YOUR_API_KEY_HERE',
-    'ety_code'    => 50039,
-    'environment' => 'test',
+    // ── CVV re-entry (optional) ────────────────────────────────────────────
+    'cvv'                 => '123',
 ]);
 
-try {
-    // Verify the webhook is genuine by calling ecollect's verifySessionToken API.
-    // This checks that the SessionToken in the payload belongs to your entity.
-    $sessionToken = $client->session->getActive();
-    $result       = $client->webhooks->confirmWebhook($payload, $sessionToken);
-
-    echo 'Webhook verified! State: ' . ($result['tranState'] ?? '') . PHP_EOL;
-
-    // Update your database based on the transaction state
-    if (($result['tranState'] ?? '') === 'OK') {
-        // Mark the order as paid
-        markOrderAsPaid($result['ticketId'], $result['trazabilityCode']);
-    }
-
-    // IMPORTANT: You must respond with this exact JSON or ecollect will retry the webhook
-    header('Content-Type: application/json');
-    echo json_encode(['ReturnCode' => 'SUCCESS']);
-
-} catch (WebhookValidationException $e) {
-    // The webhook payload is invalid or could be a forgery attempt
-    error_log('Invalid webhook: ' . $e->getMessage());
-    http_response_code(400);
-    header('Content-Type: application/json');
-    echo json_encode(['ReturnCode' => 'FAIL_SYSTEM']);
+if ($payment->approved) {
+    echo '✅ Payment approved!' . PHP_EOL;
+    echo '   Reference: ' . $payment->transactionReference . PHP_EOL; // Save for reconciliation
+    echo '   Auth code: ' . $payment->authorizationCode . PHP_EOL;
+} else {
+    echo '❌ Payment declined: ' . $payment->responseMessage . PHP_EOL;
 }
 ```
 
-### HMAC signature verification (optional additional layer)
-
-If ecollect also sends an HMAC signature header, you can verify it:
+### Pay without a token (one-shot card entry)
 
 ```php
 <?php
+$payment = $client->createTransactionPayment([
+    'amount'              => 50000,
+    'currency'            => 'COP',
+    'order_id'            => 'ORDER-' . time(),
+    'description'         => 'One-time purchase',
 
-// Get the signature from the request headers
-$signature = $_SERVER['HTTP_X_ECOLLECT_SIG'] ?? '';
+    // Full card details (no token needed)
+    'card_number'         => '4296005885355275',
+    'expiration_date'     => '12/2025',
+    'payment_system'      => '1',
+    'cvv'                 => '123',
+    'fi_code'             => '190',
 
-// Verify the HMAC-SHA256 signature
-$isValid = $client->webhooks->verifyWebhookSignature(
-    $payload,             // The parsed JSON payload array
-    $signature,           // The signature header value
-    'YOUR_WEBHOOK_SECRET' // Your webhook secret from the dashboard
-);
+    'card_holder_name'    => 'David Caballero',
+    'card_holder_id_type' => 'CC',
+    'card_holder_id'      => '123456799',
+    'email'               => 'david.caballero@ecollect.co',
+    'mobile_country_code' => '1',
+    'mobile_number'       => '311111111',
+]);
+```
 
-if (!$isValid) {
-    http_response_code(401);
-    echo 'Invalid signature';
-    exit;
+---
+
+## 🏦 Get Available Payment Systems
+
+```php
+<?php
+$methods = $client->getPaymentSystem();
+
+foreach ($methods as $method) {
+    // id     → paymentSystem code for tokenCommand / createTransactionPayment
+    // name   → human-readable name: "Visa", "Mastercard", "PSE", "SPEI", etc.
+    // active → bool: whether this method is currently enabled
+    printf("[%s] %s — active: %s\n", $method->id, $method->name, $method->active ? 'yes' : 'no');
 }
 ```
 
 ---
 
-## 12. Error Handling
+## 🔄 Check Transaction Status
 
-Every SDK error extends `EcollectException`, which extends PHP's standard `RuntimeException`. You can use normal `try/catch` blocks and check the specific exception class.
+Verify the final status of any transaction for reconciliation:
 
 ```php
 <?php
+$info = $client->getTransactionInformation([
+    'transaction_reference' => 'YOUR_TRANSACTION_REFERENCE',
+]);
 
-use Ecollect\Exceptions\EcollectException;
-use Ecollect\Exceptions\InvalidCardException;
-use Ecollect\Exceptions\InvalidConfigException;
-use Ecollect\Exceptions\ValidationException;
-use Ecollect\Exceptions\SessionExpiredException;
-use Ecollect\Exceptions\NetworkRetryableException;
-use Ecollect\Exceptions\TokenNotFoundException;
-use Ecollect\Exceptions\DuplicateTransactionException;
-use Ecollect\Exceptions\AuthenticationException;
-use Ecollect\Exceptions\WebhookValidationException;
-use Ecollect\Exceptions\CustomerException;
-use Ecollect\Exceptions\PollingTimeoutException;
+echo 'Status    : ' . $info->status . PHP_EOL;          // APPROVED | REJECTED | PENDING
+echo 'Amount    : ' . $info->amount . PHP_EOL;
+echo 'Currency  : ' . $info->currency . PHP_EOL;
+echo 'Date      : ' . $info->transactionDate . PHP_EOL; // ISO 8601
+echo 'Auth code : ' . $info->authorizationCode . PHP_EOL;
+```
+
+> In production, this method automatically calls the special endpoint
+> `https://m.e-collect.com/app_Express/api/GetTransactionInformation`.
+> The SDK switches URLs based on the `sandbox` flag — no changes needed in your code.
+
+---
+
+## 🔔 Webhook Verification (HMAC-SHA256)
+
+When ecollect sends an asynchronous notification to your server, always verify the signature first:
+
+```php
+<?php
+use Ecollect\Exceptions\WebhookVerificationException;
+
+// Read the raw POST body BEFORE calling json_decode() or any input filter
+$rawBody   = file_get_contents('php://input');
+$signature = $_SERVER['HTTP_X_ECOLLECT_SIGNATURE'] ?? '';
 
 try {
-    $result = $client->payments->process($intent);
-    // Handle success...
+    // verifySessionToken validates the HMAC-SHA256 signature from ecollect
+    // and returns a decoded stdClass payload if valid
+    $payload = $client->verifySessionToken($rawBody, $signature);
 
-} catch (InvalidCardException $e) {
-    // The card number failed Luhn validation, or the expiration date is wrong
-    echo 'Card is invalid: ' . $e->getMessage() . PHP_EOL;
-    // Tell the user to check their card number and expiry date
+    echo '✅ Webhook verified. Event type: ' . $payload->eventType . PHP_EOL;
+    echo '   Transaction ref: ' . $payload->transactionReference . PHP_EOL;
 
-} catch (ValidationException $e) {
-    // A required field is missing or has an invalid value
-    echo 'Validation error: ' . $e->getMessage() . PHP_EOL;
-    // Check the message for the specific field that is wrong
+    // Update your order in the database
+    // if ($payload->status === 'APPROVED') { markOrderPaid($payload->orderId); }
 
-} catch (DuplicateTransactionException $e) {
-    // merchantTransactionId was already used in another transaction
-    echo 'Duplicate order ID — generate a new merchantTransactionId' . PHP_EOL;
+    http_response_code(200);
+    echo json_encode(['received' => true]);
 
-} catch (TokenNotFoundException $e) {
-    // The tokenId provided does not exist or was already deleted
-    echo 'Saved card not found — ask customer to re-enter card' . PHP_EOL;
+} catch (WebhookVerificationException $e) {
+    // Invalid signature — reject the request immediately
+    http_response_code(400);
+    echo 'Invalid signature';
+}
+```
 
-} catch (SessionExpiredException $e) {
-    // This should rarely happen because the SDK retries automatically
-    echo 'Session expired unexpectedly' . PHP_EOL;
+---
 
-} catch (NetworkRetryableException $e) {
-    // A temporary server-side error. The SDK already retried max_retries times.
-    echo 'ecollect is temporarily unavailable. Try again later.' . PHP_EOL;
+## ⚠️ Error Handling
+
+All exceptions extend `Ecollect\Exceptions\EcollectException`:
+
+```php
+<?php
+use Ecollect\Exceptions\EcollectException;         // Base — catches any SDK error
+use Ecollect\Exceptions\AuthenticationException;   // Thrown when: API key/EntityCode wrong or expired
+use Ecollect\Exceptions\ValidationException;       // Thrown when: required field missing or malformed
+use Ecollect\Exceptions\PaymentDeclinedException;  // Thrown when: card issuer rejected the transaction
+use Ecollect\Exceptions\NetworkException;          // Thrown when: timeout or connection failure
+use Ecollect\Exceptions\TokenNotFoundException;    // Thrown when: token does not exist
+use Ecollect\Exceptions\RateLimitException;        // Thrown when: too many requests in short window
+use Ecollect\Exceptions\ServerException;           // Thrown when: unexpected 5xx from ecollect
+
+try {
+    $payment = $client->createTransactionPayment([/* ... */]);
 
 } catch (AuthenticationException $e) {
-    // Your API key or entity code is wrong, or the merchant is blocked
-    echo 'Authentication failed — check your api_key and ety_code' . PHP_EOL;
+    // ➡ Re-check api_key and entity_code. Sandbox vs production mismatch?
+    error_log('Bad credentials: ' . $e->getMessage());
 
-} catch (WebhookValidationException $e) {
-    // Webhook payload is forged or invalid
-    echo 'Invalid webhook: ' . $e->getMessage() . PHP_EOL;
+} catch (ValidationException $e) {
+    // ➡ getFields() returns [['field' => '...', 'message' => '...'], ...]
+    error_log('Validation error: ' . json_encode($e->getFields()));
 
-} catch (CustomerException $e) {
-    // Customer-related error (not found, mismatch, etc.)
-    echo 'Customer error: ' . $e->getMessage() . PHP_EOL;
+} catch (PaymentDeclinedException $e) {
+    // ➡ Do NOT retry automatically. Show a user-friendly message.
+    error_log('Declined: ' . $e->getResponseCode() . ' — ' . $e->getResponseMessage());
 
-} catch (PollingTimeoutException $e) {
-    // reconciliate() timed out waiting for a final state
-    echo 'Polling timed out for ticket: ' . $e->getTicketId() . PHP_EOL;
+} catch (NetworkException $e) {
+    // ➡ Safe to retry after a brief delay
+    error_log('Network error: ' . $e->getMessage());
 
-} catch (InvalidConfigException $e) {
-    // You passed wrong values to EcollectClient constructor
-    echo 'SDK misconfigured: ' . $e->getMessage() . PHP_EOL;
+} catch (TokenNotFoundException $e) {
+    // ➡ Token was removed or never existed — ask user to re-enter the card
+    error_log('Token not found');
+
+} catch (RateLimitException $e) {
+    // ➡ Implement exponential back-off; getRetryAfter() gives seconds to wait
+    error_log('Rate limited. Retry after: ' . $e->getRetryAfter() . 's');
+
+} catch (ServerException $e) {
+    // ➡ Log details and contact ecollect support
+    error_log('Server error ' . $e->getStatusCode() . ': ' . $e->getRawBody());
 
 } catch (EcollectException $e) {
-    // Any other ecollect-specific error not caught above
-    echo 'ecollect error [' . $e->getCode() . ']: ' . $e->getMessage() . PHP_EOL;
-    echo 'Raw return code: ' . $e->getReturnCode() . PHP_EOL;
-
-} catch (\Exception $e) {
-    // A genuine unexpected error (network outage, bug, etc.)
-    throw $e; // Re-throw so your global error handler sees it
+    error_log('Unexpected SDK error: ' . $e->getMessage());
 }
 ```
 
-### Exception class reference
+---
 
-| Class | When it's thrown |
-|---|---|
-| `EcollectException` | Base class for all SDK exceptions |
-| `InvalidConfigException` | Wrong constructor arguments |
-| `SessionExpiredException` | Token expired (usually auto-recovered) |
-| `ValidationException` | Missing/invalid field in your request |
-| `InvalidCardException` | Bad card number or expiration date |
-| `NetworkRetryableException` | Temporary server error, retries exhausted |
-| `TokenNotFoundException` | Token ID does not exist |
-| `DuplicateTransactionException` | `merchantTransactionId` already used |
-| `AuthenticationException` | API key/entity code invalid or blocked |
-| `WebhookValidationException` | Webhook payload is forged or invalid |
-| `CustomerException` | Customer-related errors |
-| `PollingTimeoutException` | `reconciliate()` timed out |
+## 🌍 Test vs Production
+
+| Setting | Test (Sandbox) | Production |
+|---|---|---|
+| `sandbox` option | `true` | `false` |
+| Base URL | `https://test1.e-collect.com/app_express/api/` | `https://www.e-collect.com/app_Express/api/` |
+| GetTransactionInformation URL | same base URL | `https://m.e-collect.com/app_Express/api/GetTransactionInformation` |
+| Test card | `4296005885355275` | Real cards only |
+| EntityCode example | `50039` | Your production EntityCode |
+| Real money charged? | ❌ No | ✅ Yes |
 
 ---
 
-## 13. Test vs Production
-
-### Test environment
+## 📋 Complete End-to-End PHP Script
 
 ```php
 <?php
-
-$client = new EcollectClient([
-    'api_key'     => 'YOUR_TEST_API_KEY',
-    'ety_code'    => 50039,     // Test entity code
-    'environment' => 'test',   // Uses https://test1.e-collect.com/app_express/api/
-]);
-```
-
-- **Does NOT charge real money**
-- Test card: `4296005885355275`, expiry `12/2025`, any CVV
-- Test cardholder: David Caballero, CC 123456799, FiCode 190
-
-### Production environment
-
-```php
-<?php
-
-$client = new EcollectClient([
-    'api_key'     => 'YOUR_PRODUCTION_API_KEY',  // Different key from test!
-    'ety_code'    => 12345,                       // Your real merchant entity code
-    'environment' => 'prod',                      // Uses https://www.e-collect.com/app_Express/api/
-]);
-```
-
-> ⚠️ **Never hardcode production credentials in your source code.** Use environment variables:
-
-```php
-<?php
-
-// Load from environment variables (set in your server configuration or .env file)
-$client = new EcollectClient([
-    'api_key'     => getenv('ECOLLECT_API_KEY'),
-    'ety_code'    => (int) getenv('ECOLLECT_ETY_CODE'),
-    'environment' => getenv('ECOLLECT_ENV') ?: 'test',
-]);
-```
-
-Example `.env` file (add to `.gitignore` — never commit this!):
-
-```
-ECOLLECT_API_KEY=your-secret-api-key
-ECOLLECT_ETY_CODE=50039
-ECOLLECT_ENV=test
-```
-
-If you use a `.env` loader like [vlucas/phpdotenv](https://github.com/vlucas/phpdotenv):
-
-```bash
-composer require vlucas/phpdotenv
-```
-
-```php
-<?php
-
-$dotenv = Dotenv\Dotenv::createImmutable(__DIR__);
-$dotenv->load();
-
-$client = new EcollectClient([
-    'api_key'     => $_ENV['ECOLLECT_API_KEY'],
-    'ety_code'    => (int) $_ENV['ECOLLECT_ETY_CODE'],
-    'environment' => $_ENV['ECOLLECT_ENV'] ?? 'test',
-]);
-```
-
-> 📌 Note: in production, `getTransactionInformation` automatically uses `https://m.e-collect.com/app_Express/api/GetTransactionInformation` — the SDK handles this URL switch for you.
-
----
-
-## 14. Full End-to-End Example
-
-This is a complete, runnable PHP script that covers: setup → save a card → pay with the saved card → check the transaction status.
-
-```php
-<?php
-/**
- * ecollect PHP SDK — complete end-to-end example
- *
- * Run: php example.php
- */
-
 require_once __DIR__ . '/vendor/autoload.php';
 
 use Ecollect\EcollectClient;
-use Ecollect\Types\PaymentIntent;
-use Ecollect\Types\Customer;
+use Ecollect\Enums\TokenCommandAction;
 use Ecollect\Exceptions\EcollectException;
-use Ecollect\Exceptions\InvalidCardException;
+use Ecollect\Exceptions\PaymentDeclinedException;
 use Ecollect\Exceptions\ValidationException;
 
-// ─── 1. Initialize the client ─────────────────────────────────────────────
+// ── 1. Create the client in sandbox mode ──────────────────────────────────────
 $client = new EcollectClient([
-    'api_key'     => 'YOUR_TEST_API_KEY',   // From the ecollect merchant dashboard
-    'ety_code'    => 50039,                  // Your test entity code
-    'environment' => 'test',                 // Test environment — no real money charged
-    'srv_code'    => 1001,                   // Your default service code
-    'log_level'   => 'info',
+    'api_key'     => 'YOUR_API_KEY',  // Replace with your real test API key
+    'entity_code' => '50039',          // Replace with your real entity code
+    'sandbox'     => true,             // TEST environment
+    'debug'       => true,             // Helpful logs during development
 ]);
 
 try {
-    // ─── 2. Save a card token ────────────────────────────────────────────────
-    echo PHP_EOL . '📦 Saving card token...' . PHP_EOL;
-
-    $cardData = [
-        'cardNumber'       => '4296005885355275',  // Test Visa card
-        'expirationDate'   => '12/2025',            // MM/YYYY format
-        'secureCode'       => '123',                // CVV
-        'cardHolderName'   => 'David Caballero',
-        'cardHolderIdType' => 'CC',                 // CC = Colombian national ID
-        'cardHolderId'     => '123456799',
-        'paymentSystem'    => '1',                  // Visa Colombia
-        'fiCode'           => '190',                // Test financial institution
-        'email'            => 'david.caballero@ecollect.co',
-    ];
-
-    $savedCard = $client->tokens->save($cardData);
-    echo '✅ Card saved!' . PHP_EOL;
-    echo '   Token ID: ' . $savedCard['tokenId'] . PHP_EOL;    // Store in your DB!
-    echo '   Masked: ' . ($savedCard['maskedCard'] ?? '') . PHP_EOL;
-
-    // ─── 3. List saved cards ─────────────────────────────────────────────────
-    echo PHP_EOL . '📋 Listing saved cards...' . PHP_EOL;
-    $cards = $client->tokens->list(
-        'david.caballero@ecollect.co',
-        '123456799'
-    );
-    echo '✅ Found ' . count($cards) . ' saved card(s).' . PHP_EOL;
-
-    // ─── 4. Process a payment with the saved token ───────────────────────────
-    echo PHP_EOL . '💳 Processing payment...' . PHP_EOL;
-
-    // Build the customer object
-    $customer = new Customer(
-        'David Caballero',
-        'david.caballero@ecollect.co',
-        '+1 311111111',
-        'CC',
-        '123456799'
-    );
-
-    // Build the payment intent
-    $intent = new PaymentIntent(50000, 'COP', $customer);
-    $intent->vatAmount             = 7983;
-    $intent->merchantTransactionId = 'ORDER-' . time(); // Must be unique!
-    $intent->tokenId               = $savedCard['tokenId']; // Use the saved token
-    $intent->paymentSystem         = '1';
-    $intent->fiCode                = '190';
-    $intent->secureCode            = '123';
-    $intent->installments          = 1;
-    $intent->responseUrl           = 'https://yoursite.com/webhooks/ecollect';
-
-    $result = $client->payments->process($intent);
-    echo '✅ Payment processed!' . PHP_EOL;
-    echo '   Ticket ID: ' . ($result['ticketId'] ?? '') . PHP_EOL;  // Store in your DB!
-    echo '   State: ' . ($result['tranState'] ?? '') . PHP_EOL;      // 'OK' = approved
-    echo '   Trazability: ' . ($result['trazabilityCode'] ?? '') . PHP_EOL;
-
-    // ─── 5. Check transaction status ─────────────────────────────────────────
-    if (!empty($result['ticketId'])) {
-        echo PHP_EOL . '🔍 Checking transaction status...' . PHP_EOL;
-        $status = $client->reconciliation->getTransactionStatus((int)$result['ticketId']);
-        echo '   Final state: ' . ($status['tranState'] ?? '') . PHP_EOL;
-        echo '   Amount charged: ' . ($status['transValue'] ?? '') . ' ' . ($status['payCurrency'] ?? '') . PHP_EOL;
-        echo '   Bank date: ' . ($status['bankProcessDate'] ?? '') . PHP_EOL;
+    // ── 2. List available payment methods ──────────────────────────────────
+    echo "\n🏦 Available payment methods:\n";
+    $methods = $client->getPaymentSystem();
+    foreach ($methods as $m) {
+        echo "  [{$m->id}] {$m->name} — active: " . ($m->active ? 'yes' : 'no') . "\n";
     }
 
-    // ─── 6. Get available payment systems ────────────────────────────────────
-    echo PHP_EOL . '🏦 Available payment systems:' . PHP_EOL;
-    $paymentSystems = $client->paymentSystems->list();
-    foreach ($paymentSystems as $ps) {
-        echo '  - ' . $ps['paymentSystem'] . ' → ' . ($ps['brandImageUrl'] ?? '(no image)') . PHP_EOL;
+    // ── 3. Save a card token ───────────────────────────────────────────────
+    echo "\n💳 Saving card...\n";
+    $tokenResult = $client->tokenCommand([
+        'action'              => TokenCommandAction::SAVE,
+        'card_number'         => '4296005885355275',
+        'expiration_date'     => '12/2025',
+        'payment_system'      => '1',
+        'cvv'                 => '123',
+        'card_holder_name'    => 'David Caballero',
+        'card_holder_id_type' => 'CC',
+        'card_holder_id'      => '123456799',
+        'email'               => 'david.caballero@ecollect.co',
+        'mobile_country_code' => '1',
+        'mobile_number'       => '311111111',
+        'fi_code'             => '190',
+    ]);
+    $token = $tokenResult->token;
+    echo "  Token: $token\n";
+
+    // ── 4. List saved tokens for this cardholder ───────────────────────────
+    echo "\n🔍 Querying saved tokens...\n";
+    $cards = $client->queryToken(['email' => 'david.caballero@ecollect.co']);
+    foreach ($cards as $card) {
+        echo "  {$card->token} — {$card->lastFour} ({$card->paymentSystem})\n";
     }
 
-    echo PHP_EOL . '🎉 All done!' . PHP_EOL;
+    // ── 5. Create a payment with the saved token ───────────────────────────
+    echo "\n💰 Creating payment...\n";
+    $payment = $client->createTransactionPayment([
+        'amount'              => 50000,
+        'currency'            => 'COP',
+        'token'               => $token,
+        'order_id'            => 'ORDER-' . time(),
+        'description'         => 'Test purchase via ecollect PHP SDK',
+        'card_holder_name'    => 'David Caballero',
+        'card_holder_id_type' => 'CC',
+        'card_holder_id'      => '123456799',
+        'email'               => 'david.caballero@ecollect.co',
+        'mobile_country_code' => '1',
+        'mobile_number'       => '311111111',
+    ]);
 
-} catch (InvalidCardException $e) {
-    echo '❌ Invalid card: ' . $e->getMessage() . PHP_EOL;
-    exit(1);
+    if ($payment->approved) {
+        echo "  ✅ Approved! Ref: {$payment->transactionReference}\n";
+
+        // ── 6. Check the transaction status ────────────────────────────────
+        echo "\n🔄 Verifying status...\n";
+        $info = $client->getTransactionInformation([
+            'transaction_reference' => $payment->transactionReference,
+        ]);
+        echo "  Status: {$info->status} | Date: {$info->transactionDate}\n";
+    } else {
+        echo "  ❌ Declined: {$payment->responseMessage}\n";
+    }
+
+    // ── 7. Clean up — remove the test token ───────────────────────────────
+    echo "\n🗑️  Removing token...\n";
+    $client->tokenCommand(['action' => TokenCommandAction::REMOVE, 'token' => $token]);
+    echo "  Done.\n";
+
 } catch (ValidationException $e) {
-    echo '❌ Validation error: ' . $e->getMessage() . PHP_EOL;
-    exit(1);
+    echo "\n🚨 Validation error: " . json_encode($e->getFields()) . "\n";
+} catch (PaymentDeclinedException $e) {
+    echo "\n🚨 Payment declined: {$e->getResponseMessage()}\n";
 } catch (EcollectException $e) {
-    echo '❌ ecollect error: ' . $e->getMessage() . PHP_EOL;
-    echo '   Return code: ' . $e->getReturnCode() . PHP_EOL;
-    exit(1);
-} catch (\Exception $e) {
-    echo '❌ Unexpected error: ' . $e->getMessage() . PHP_EOL;
-    exit(1);
+    echo "\n🚨 SDK error: {$e->getMessage()}\n";
 }
 ```
 
 ---
 
-## 15. Common Errors
+## ❓ FAQ
 
-### "api_key is required"
+**Q1: Does the SDK require Guzzle?**
+No. The SDK uses PHP's native cURL extension by default. You can optionally pass a PSR-18 HTTP client (like Guzzle) via the `http_client` option if your project already uses one.
 
-**Cause:** You passed an empty string or forgot `api_key` in the options array.
+**Q2: How do I use this in Laravel?**
+Bind `EcollectClient` in a service provider and inject it through the IoC container. Store your `api_key` and `entity_code` in `.env` and read them with `env('ECOLLECT_API_KEY')`. Never commit credentials to version control.
 
-```php
-// ❌ Wrong
-$client = new EcollectClient(['api_key' => '', 'ety_code' => 50039, 'environment' => 'test']);
+**Q3: Can I save multiple cards per customer?**
+Yes. Each `tokenCommand(SAVE)` call returns a unique token. Store all tokens in your database associated with the customer record.
 
-// ✅ Correct
-$client = new EcollectClient(['api_key' => 'my-real-api-key', 'ety_code' => 50039, 'environment' => 'test']);
-```
+**Q4: Is the CVV stored by ecollect?**
+No. ecollect never persists CVV values. Pass it during save/payment and discard it immediately — do not store it anywhere.
 
-### "ety_code must be a positive integer"
+**Q5: What happens when the session token expires?**
+The SDK automatically detects a 401 response, fetches a new session token, and retries the request once. Fully transparent to your code.
 
-**Cause:** You passed `0`, `null`, or a non-numeric string.
+**Q6: Does this work with PHP 8.x?**
+Yes. PHP 8.0, 8.1, 8.2, and 8.3 are all tested and supported.
 
-```php
-// ❌ Wrong
-$client = new EcollectClient(['api_key' => 'key', 'ety_code' => 0, 'environment' => 'test']);
-
-// ✅ Correct
-$client = new EcollectClient(['api_key' => 'key', 'ety_code' => 50039, 'environment' => 'test']);
-```
-
-### "srvCode is required"
-
-**Cause:** You didn't set `srv_code` in the constructor options or `srvCode` in `PaymentIntent`.
-
-```php
-// ✅ Option 1: set it in the constructor (applies to all payments)
-$client = new EcollectClient([..., 'srv_code' => 1001]);
-
-// ✅ Option 2: set it per payment
-$intent->srvCode = 1001;
-```
-
-### "Card number is invalid (Luhn check failed)"
-
-**Cause:** The card number doesn't pass the Luhn algorithm. This is checked locally before any HTTP call.
-
-```php
-// Use the test card number:
-'cardNumber' => '4296005885355275'
-```
-
-### `FAIL_INVALIDENTITYCODE`
-
-**Cause:** Your `ety_code` is wrong or doesn't exist in the chosen environment.
-
-**Fix:** Double-check the entity code in your ecollect merchant dashboard. Test and production environments use different codes.
-
-### `FAIL_ACCESSDENIED`
-
-**Cause:** Your API key is wrong, has been revoked, or your merchant account is inactive.
-
-**Fix:** Log into the ecollect dashboard, regenerate your API key, and update your configuration.
-
-### `FAIL_MERCHANTRANSID`
-
-**Cause:** You used the same `merchantTransactionId` twice.
-
-**Fix:** Generate a unique ID for every transaction. Using `time()` is a simple option; for high-volume systems use `uniqid('ORDER-', true)` or a UUID library.
+**Q7: Can I use this in a WordPress plugin?**
+Yes. Include Composer's autoloader in your plugin bootstrap, then use `EcollectClient` normally. Make sure not to conflict with other plugins' Composer dependencies by using a package prefix or an isolated vendor directory.
 
 ---
 
-## 16. Frequently Asked Questions
+## 🐛 Common Errors and Fixes
 
-**Q: Do I need to call `getSessionToken` myself?**
-
-No. The SDK calls it automatically before the first API request and refreshes it transparently when it expires. You never need to manage session tokens manually.
-
----
-
-**Q: Where do I get my API key and entity code?**
-
-Log into your ecollect merchant dashboard and navigate to **API Credentials**. Your `api_key` and `ety_code` are displayed there. If you don't have dashboard access, contact your ecollect account representative.
-
----
-
-**Q: Will the test environment charge my card?**
-
-No. The test environment (`'environment' => 'test'`) is a complete sandbox and **never charges any card**. Use it freely during development.
-
----
-
-**Q: Can I use the SDK in a shared hosting environment?**
-
-Yes, as long as PHP 7.4+ is available and Composer can install packages. The only runtime dependency is Guzzle HTTP, which works on any standard PHP hosting.
-
----
-
-**Q: What is a service code (`srv_code`)?**
-
-A service code identifies a specific payment service configured for your merchant account (e.g., a particular currency, payment method, or settlement period). You get this value from ecollect when they configure your account. Most merchants have one default service code.
-
----
-
-**Q: What is a financial institution code (`fiCode`)?**
-
-For card payments, this identifies the card-acquiring bank. For PSE/SPEI bank transfers, it identifies the customer's bank. The full list of valid codes for your entity comes from `$client->paymentSystems->list()`.
-
----
-
-**Q: What happens if the network goes down mid-payment?**
-
-The SDK retries `max_retries` times (default: 3) with exponential back-off. If all retries fail, a `NetworkRetryableException` is thrown. Always check the transaction status via `getTransactionStatus($ticketId)` before retrying a payment — the original payment may have gone through despite the network error.
-
----
-
-**Q: What is `merchantTransactionId` and must it be unique?**
-
-It is your internal order/reference ID. ecollect stores it alongside the transaction so you can find it later by your own ID. It **must be unique per transaction** — if you reuse one, you will get a `DuplicateTransactionException`.
-
----
-
-**Q: How do I handle PSE (Colombian bank transfer) payments?**
-
-PSE payments are asynchronous — the customer is redirected to their bank's website. The flow is:
-
-1. Call `$client->payments->process($intent)` with `paymentSystem = '0'` (PSE) and a `redirectUrl`.
-2. Redirect the user to `$result['eCollectUrl']`.
-3. ecollect sends a webhook to your `responseUrl` when the bank confirms (or denies) the transfer.
-4. Alternatively, poll with `$client->reconciliation->reconciliate($ticketId)`.
-
----
-
-**Q: My webhook is getting called multiple times. Why?**
-
-If your webhook endpoint doesn't respond with `{"ReturnCode":"SUCCESS"}` within a few seconds, ecollect will retry the notification. Make sure you always return that JSON response at the end of your webhook handler, even if you defer the actual processing to a background job.
-
----
-
-*For further help, visit [https://www.e-collect.com](https://www.e-collect.com) or contact the ecollect support team.*
+| Error | Likely Cause | Fix |
+|---|---|---|
+| `AuthenticationException: Invalid API key` | Wrong credentials or environment mismatch | Check `api_key` and `entity_code`; ensure sandbox/production keys match the `sandbox` setting |
+| `ValidationException: card_number is required` | Missing required field | Verify all fields are present in your array |
+| `ValidationException: expiration_date format` | Wrong date format | Use `MM/YYYY` exactly, e.g. `12/2025` |
+| `PaymentDeclinedException: CARD_DECLINED` | Card issuer rejected the charge | Show a friendly message; do not auto-retry |
+| `NetworkException: cURL error 7` | No internet access or wrong environment | Check `sandbox` flag; verify server can reach ecollect |
+| `TokenNotFoundException` | Token was deleted or never created | Call `tokenCommand(SAVE)` again to create a new token |
+| `RateLimitException` | Too many API calls per minute | Add delays / exponential back-off; contact ecollect to raise limits |
+| `ServerException: 503` | ecollect temporarily down | Retry after 30–60 s; check ecollect status page |
+| `Call to undefined method` | Old SDK version | Run `composer update ecollect/sdk` |
+| PHP `cURL extension not found` | Extension disabled | Enable `extension=curl` in `php.ini` and restart PHP-FPM |
