@@ -76,13 +76,32 @@ const handler: Handler = async (event) => {
   };
 
   try {
+    console.log(`[ecollect-proxy] → ${url}`);
+    console.log(`[ecollect-proxy] body: ${JSON.stringify({ ...requestBody, ApiKey: '***' })}`);
+
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(requestBody),
     });
 
-    const data = (await response.json()) as Record<string, unknown>;
+    console.log(`[ecollect-proxy] ← HTTP ${response.status} ${response.statusText}`);
+
+    const rawText = await response.text();
+    console.log(`[ecollect-proxy] raw response (first 300 chars): ${rawText.substring(0, 300)}`);
+
+    let data: Record<string, unknown>;
+    try {
+      data = JSON.parse(rawText) as Record<string, unknown>;
+    } catch {
+      return {
+        statusCode: 502,
+        body: JSON.stringify({
+          error: `ecollect returned non-JSON (HTTP ${response.status})`,
+          preview: rawText.substring(0, 200),
+        }),
+      };
+    }
 
     return {
       statusCode: 200,
@@ -92,7 +111,7 @@ const handler: Handler = async (event) => {
     console.error('ecollect proxy error:', error);
     return {
       statusCode: 502,
-      body: JSON.stringify({ error: 'Gateway error — check server logs' }),
+      body: JSON.stringify({ error: String(error) }),
     };
   }
 };
