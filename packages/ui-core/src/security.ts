@@ -8,6 +8,10 @@ export const NEVER_LOG_FIELDS: readonly string[] = [
   'cardNumber',
   'secureCode',
   'expirationDate',
+  'cvv',
+  'cvc',
+  'cvc2',
+  'cvv2',
 ];
 
 /**

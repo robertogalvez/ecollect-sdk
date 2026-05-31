@@ -7,7 +7,6 @@ import './App.css';
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type AppTab = 'console' | 'minimal' | 'full' | 'dark';
-type Step = 'init' | 'ready' | 'done';
 
 interface SavedToken {
   tokenId: string;
@@ -15,14 +14,230 @@ interface SavedToken {
   brand: string;
 }
 
-// ─── API helper ───────────────────────────────────────────────────────────────
-
-async function callProxy(endpoint: string, payload: Record<string, unknown> = {}) {
-  const { data } = await axios.post('/.netlify/functions/ecollect-proxy', { endpoint, ...payload });
-  return data;
+interface TramaRecord {
+  id: string;
+  timestamp: string;
+  endpoint: string;
+  request: Record<string, unknown>;
+  response: unknown;
+  durationMs: number;
+  success: boolean;
 }
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
+// ─── API helper ───────────────────────────────────────────────────────────────
+
+async function callProxy(
+  endpoint: string,
+  payload: Record<string, unknown> = {},
+  onTrama?: (t: TramaRecord) => void,
+): Promise<Record<string, unknown>> {
+  const request = { endpoint, ...payload };
+  const t0 = Date.now();
+  const id = `${endpoint}-${Date.now()}`;
+  try {
+    const { data } = await axios.post('/.netlify/functions/ecollect-proxy', request);
+    const record: TramaRecord = {
+      id,
+      timestamp: new Date().toISOString(),
+      endpoint,
+      request,
+      response: data,
+      durationMs: Date.now() - t0,
+      success: data?.ReturnCode === 'SUCCESS',
+    };
+    onTrama?.(record);
+    return data as Record<string, unknown>;
+  } catch (err: unknown) {
+    const errData = (err as { response?: { data?: unknown } })?.response?.data ?? { error: String(err) };
+    const record: TramaRecord = {
+      id,
+      timestamp: new Date().toISOString(),
+      endpoint,
+      request,
+      response: errData,
+      durationMs: Date.now() - t0,
+      success: false,
+    };
+    onTrama?.(record);
+    throw err;
+  }
+}
+
+// ─── Trama Panel ──────────────────────────────────────────────────────────────
+
+function TramaPanel({ trama, onCopy }: { trama: TramaRecord; onCopy: (text: string, label: string) => void }) {
+  const [tab, setTab] = useState<'request' | 'response'>('request');
+  const [copied, setCopied] = useState<string | null>(null);
+
+  function copy(text: string, label: string) {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(label);
+      setTimeout(() => setCopied(null), 1800);
+      onCopy(text, label);
+    });
+  }
+
+  const reqJson = JSON.stringify(trama.request, null, 2);
+  const resJson = JSON.stringify(trama.response, null, 2);
+
+  return (
+    <div style={{
+      border: `1.5px solid ${trama.success ? '#10b981' : '#f59e0b'}`,
+      borderRadius: 12,
+      overflow: 'hidden',
+      fontFamily: 'monospace',
+      fontSize: '0.82rem',
+    }}>
+      {/* Header */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '10px 16px',
+        background: trama.success ? '#ecfdf5' : '#fffbeb',
+        borderBottom: '1px solid #e2e8f0',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontWeight: 700, fontSize: '0.9rem', color: trama.success ? '#065f46' : '#92400e' }}>
+            {trama.success ? '✅' : '⚠️'} {trama.endpoint}
+          </span>
+          <span style={{ color: '#94a3b8', fontSize: '0.75rem' }}>{trama.timestamp.replace('T', ' ').slice(0, 19)}</span>
+          <span style={{
+            background: trama.success ? '#d1fae5' : '#fef3c7',
+            color: trama.success ? '#065f46' : '#92400e',
+            padding: '2px 8px', borderRadius: 20, fontSize: '0.72rem', fontWeight: 700,
+          }}>
+            {(trama.response as Record<string, unknown>)?.ReturnCode as string ?? 'ERROR'}
+          </span>
+          <span style={{ color: '#94a3b8', fontSize: '0.72rem' }}>{trama.durationMs}ms</span>
+        </div>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button
+            onClick={() => copy(reqJson, 'request')}
+            style={copyBtnStyle}
+            title="Copiar trama enviada"
+          >
+            {copied === 'request' ? '✓ Copiado' : '📋 Request'}
+          </button>
+          <button
+            onClick={() => copy(resJson, 'response')}
+            style={copyBtnStyle}
+            title="Copiar trama recibida"
+          >
+            {copied === 'response' ? '✓ Copiado' : '📋 Response'}
+          </button>
+          <button
+            onClick={() => copy(JSON.stringify({ request: trama.request, response: trama.response }, null, 2), 'both')}
+            style={{ ...copyBtnStyle, background: '#6366f1', color: '#fff', borderColor: '#6366f1' }}
+            title="Copiar ambas tramas (para Postman)"
+          >
+            {copied === 'both' ? '✓ Copiado' : '📤 Postman'}
+          </button>
+        </div>
+      </div>
+
+      {/* Tab selector */}
+      <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0', background: '#f8fafc' }}>
+        {(['request', 'response'] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            style={{
+              padding: '7px 20px', border: 'none', background: 'none', cursor: 'pointer',
+              fontWeight: tab === t ? 700 : 400,
+              color: tab === t ? '#6366f1' : '#64748b',
+              borderBottom: tab === t ? '2px solid #6366f1' : '2px solid transparent',
+              fontSize: '0.8rem', fontFamily: 'monospace',
+              marginBottom: -1,
+            }}
+          >
+            {t === 'request' ? '→ Trama enviada' : '← Trama recibida'}
+          </button>
+        ))}
+      </div>
+
+      {/* JSON body */}
+      <div style={{ position: 'relative' }}>
+        <pre style={{
+          margin: 0, padding: '16px 20px', background: '#0f172a', color: '#e2e8f0',
+          overflowX: 'auto', maxHeight: 420, lineHeight: 1.55,
+        }}>
+          <SyntaxJson json={tab === 'request' ? reqJson : resJson} />
+        </pre>
+      </div>
+    </div>
+  );
+}
+
+const copyBtnStyle: React.CSSProperties = {
+  padding: '4px 10px', fontSize: '0.75rem', cursor: 'pointer',
+  background: '#fff', border: '1px solid #cbd5e1', borderRadius: 6,
+  color: '#475569', fontFamily: 'inherit',
+};
+
+// ─── Syntax-colored JSON (no deps, pure React) ────────────────────────────────
+
+function SyntaxJson({ json }: { json: string }) {
+  const tokens = json
+    .replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+-]?\d+)?)/g, (match) => {
+      let cls = 'num';
+      if (/^"/.test(match)) cls = /:$/.test(match) ? 'key' : 'str';
+      else if (/true|false/.test(match)) cls = 'bool';
+      else if (/null/.test(match)) cls = 'null';
+      return `<TOKEN:${cls}>${match}</TOKEN>`;
+    })
+    .split(/(<TOKEN:\w+>.*?<\/TOKEN>)/);
+
+  return (
+    <>
+      {tokens.map((part, i) => {
+        const m = part.match(/^<TOKEN:(\w+)>(.*)<\/TOKEN>$/s);
+        if (!m) return <span key={i}>{part}</span>;
+        const colors: Record<string, string> = {
+          key: '#93c5fd', str: '#86efac', num: '#fbbf24', bool: '#f472b6', null: '#94a3b8',
+        };
+        return <span key={i} style={{ color: colors[m[1]] ?? '#e2e8f0' }}>{m[2]}</span>;
+      })}
+    </>
+  );
+}
+
+// ─── Trama History sidebar ────────────────────────────────────────────────────
+
+function TramaHistory({ tramas, onSelect, selected }: {
+  tramas: TramaRecord[];
+  onSelect: (id: string) => void;
+  selected: string | null;
+}) {
+  if (tramas.length === 0) return null;
+  return (
+    <div style={{
+      border: '1.5px solid #e2e8f0', borderRadius: 10, overflow: 'hidden', marginBottom: 16,
+    }}>
+      <div style={{ padding: '8px 14px', background: '#f1f5f9', borderBottom: '1px solid #e2e8f0', fontWeight: 600, fontSize: '0.8rem', color: '#475569' }}>
+        📡 Historial de tramas ({tramas.length})
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: 10 }}>
+        {tramas.map((t) => (
+          <button
+            key={t.id}
+            onClick={() => onSelect(t.id)}
+            style={{
+              padding: '4px 12px', fontSize: '0.75rem', cursor: 'pointer', borderRadius: 20,
+              border: `1.5px solid ${selected === t.id ? '#6366f1' : t.success ? '#10b981' : '#f59e0b'}`,
+              background: selected === t.id ? '#6366f1' : '#fff',
+              color: selected === t.id ? '#fff' : t.success ? '#065f46' : '#92400e',
+              fontFamily: 'monospace', fontWeight: selected === t.id ? 700 : 400,
+            }}
+          >
+            {t.success ? '✅' : '⚠️'} {t.endpoint}
+            <span style={{ opacity: 0.7, marginLeft: 6 }}>{t.timestamp.slice(11, 19)}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Status Badge ─────────────────────────────────────────────────────────────
 
 function StatusBadge({ sessionActive, tokenized }: { sessionActive: boolean; tokenized: boolean }) {
   return (
@@ -35,20 +250,7 @@ function StatusBadge({ sessionActive, tokenized }: { sessionActive: boolean; tok
   );
 }
 
-function ResponsePanel({ data, label }: { data: unknown; label: string }) {
-  const success = (data as Record<string, unknown>)?.ReturnCode === 'SUCCESS';
-  return (
-    <div className={`response-panel ${success ? 'response-success' : 'response-error'}`}>
-      <div className="response-header">
-        <span>{success ? '✅' : '⚠️'} {label}</span>
-        <span className={`rc-badge ${success ? 'rc-ok' : 'rc-fail'}`}>
-          {(data as Record<string, unknown>)?.ReturnCode as string ?? 'ERROR'}
-        </span>
-      </div>
-      <pre>{JSON.stringify(data, null, 2)}</pre>
-    </div>
-  );
-}
+// ─── Tab Bar ──────────────────────────────────────────────────────────────────
 
 function TabBar({ active, onChange }: { active: AppTab; onChange: (t: AppTab) => void }) {
   const tabs: { id: AppTab; label: string }[] = [
@@ -58,24 +260,16 @@ function TabBar({ active, onChange }: { active: AppTab; onChange: (t: AppTab) =>
     { id: 'dark', label: '🌑 Dark Glass' },
   ];
   return (
-    <div style={{ display: 'flex', gap: 4, marginBottom: 28, borderBottom: '2px solid #e2e8f0', paddingBottom: 0 }}>
+    <div style={{ display: 'flex', gap: 4, marginBottom: 28, borderBottom: '2px solid #e2e8f0' }}>
       {tabs.map((t) => (
-        <button
-          key={t.id}
-          onClick={() => onChange(t.id)}
-          style={{
-            padding: '10px 20px',
-            border: 'none',
-            borderBottom: active === t.id ? '2px solid #6366f1' : '2px solid transparent',
-            background: 'none',
-            cursor: 'pointer',
-            fontWeight: active === t.id ? 700 : 400,
-            color: active === t.id ? '#6366f1' : '#64748b',
-            fontSize: '0.9rem',
-            marginBottom: -2,
-            transition: 'all .15s',
-          }}
-        >
+        <button key={t.id} onClick={() => onChange(t.id)} style={{
+          padding: '10px 20px', border: 'none',
+          borderBottom: active === t.id ? '2px solid #6366f1' : '2px solid transparent',
+          background: 'none', cursor: 'pointer',
+          fontWeight: active === t.id ? 700 : 400,
+          color: active === t.id ? '#6366f1' : '#64748b',
+          fontSize: '0.9rem', marginBottom: -2, transition: 'all .15s',
+        }}>
           {t.label}
         </button>
       ))}
@@ -83,67 +277,61 @@ function TabBar({ active, onChange }: { active: AppTab; onChange: (t: AppTab) =>
   );
 }
 
-// ─── Classic Console Tab ───────────────────────────────────────────────────────
+// ─── Console Tab ──────────────────────────────────────────────────────────────
 
-function ConsoleTab({
-  sessionToken, loading, onGetSession, onReset,
-}: {
-  sessionToken: string;
-  loading: boolean;
-  onGetSession: () => void;
-  onReset: () => void;
+function ConsoleTab({ sessionToken, loading, onGetSession, onReset }: {
+  sessionToken: string; loading: boolean;
+  onGetSession: () => void; onReset: () => void;
 }) {
-  const [response, setResponse] = useState<{ label: string; data: unknown } | null>(null);
+  const [tramas, setTramas] = useState<TramaRecord[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [queryEmail, setQueryEmail] = useState('');
   const [queryDoc, setQueryDoc] = useState('');
   const [paymentSystems, setPaymentSystems] = useState<unknown[]>([]);
   const [savedTokens, setSavedTokens] = useState<SavedToken[]>([]);
   const [innerLoading, setInnerLoading] = useState(false);
 
-  async function run(label: string, fn: () => Promise<unknown>) {
+  function addTrama(t: TramaRecord) {
+    setTramas((prev) => [t, ...prev]);
+    setSelectedId(t.id);
+  }
+
+  async function run(fn: () => Promise<unknown>) {
     setInnerLoading(true);
-    setResponse(null);
-    try {
-      const data = await fn();
-      setResponse({ label, data });
-      return data as Record<string, unknown>;
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setResponse({ label, data: { error: msg } });
-    } finally {
-      setInnerLoading(false);
-    }
+    try { return await fn(); }
+    catch { /* trama already captured */ }
+    finally { setInnerLoading(false); }
   }
 
   async function handleQueryTokens() {
-    const data = await run('queryToken', () =>
-      callProxy('queryToken', {
-        SessionToken: sessionToken,
-        TokenInfoArray: [
-          { AttributeCode: 6, AttributeDesc: 'Usermail', AttributeValue: queryEmail },
-          { AttributeCode: 19, AttributeDesc: 'CardHolderId', AttributeValue: queryDoc },
-        ],
-      })
-    );
-    if ((data as Record<string, unknown>)?.TokenArray) {
-      const tokens: SavedToken[] = ((data as Record<string, unknown>).TokenArray as unknown[]).map((t) => {
-        const attrs = (t as Record<string, unknown>).TokenInfoArray ?? [] as unknown[];
-        const find = (code: number) =>
-          (attrs as Array<Record<string, unknown>>).find((a) => a.AttributeCode === code)?.AttributeValue ?? '';
-        return { tokenId: find(1) as string, maskedCard: (find(12) || find(11)) as string, brand: find(9) as string };
-      });
-      setSavedTokens(tokens);
-    }
+    await run(() => callProxy('queryToken', {
+      SessionToken: sessionToken,
+      TokenInfoArray: [
+        { AttributeCode: 6, AttributeDesc: 'Usermail', AttributeValue: queryEmail },
+        { AttributeCode: 19, AttributeDesc: 'CardHolderId', AttributeValue: queryDoc },
+      ],
+    }, (t) => {
+      addTrama(t);
+      const arr = (t.response as Record<string, unknown>)?.TokenArray;
+      if (Array.isArray(arr)) {
+        setSavedTokens(arr.map((item) => {
+          const attrs = (item as Record<string, unknown>).TokenInfoArray as Array<Record<string, unknown>> ?? [];
+          const find = (code: number) => attrs.find((a) => a.AttributeCode === code)?.AttributeValue ?? '';
+          return { tokenId: find(1) as string, maskedCard: (find(12) || find(11)) as string, brand: find(9) as string };
+        }));
+      }
+    }));
   }
 
   async function handleGetPaymentSystems() {
-    const data = await run('getPaymentSystem', () =>
-      callProxy('getPaymentSystem', { SessionToken: sessionToken })
-    );
-    if ((data as Record<string, unknown>)?.PaymentSystemArray) {
-      setPaymentSystems((data as Record<string, unknown>).PaymentSystemArray as unknown[]);
-    }
+    await run(() => callProxy('getPaymentSystem', { SessionToken: sessionToken }, (t) => {
+      addTrama(t);
+      const arr = (t.response as Record<string, unknown>)?.PaymentSystemArray;
+      if (Array.isArray(arr)) setPaymentSystems(arr);
+    }));
   }
+
+  const selectedTrama = tramas.find((t) => t.id === selectedId) ?? tramas[0] ?? null;
 
   if (!sessionToken) {
     return (
@@ -173,15 +361,9 @@ function ConsoleTab({
           </div>
         </div>
         <div className="action-grid" style={{ marginTop: 16 }}>
-          <button className="btn-secondary" onClick={handleQueryTokens} disabled={innerLoading || !queryEmail}>
-            🔍 Ver tokens
-          </button>
-          <button className="btn-secondary" onClick={handleGetPaymentSystems} disabled={innerLoading}>
-            🏦 Métodos de pago
-          </button>
-          <button className="btn-ghost" onClick={onReset} disabled={innerLoading}>
-            🔄 Nueva sesión
-          </button>
+          <button className="btn-secondary" onClick={handleQueryTokens} disabled={innerLoading || !queryEmail}>🔍 Ver tokens</button>
+          <button className="btn-secondary" onClick={handleGetPaymentSystems} disabled={innerLoading}>🏦 Métodos de pago</button>
+          <button className="btn-ghost" onClick={onReset} disabled={innerLoading}>🔄 Nueva sesión</button>
         </div>
       </div>
 
@@ -191,7 +373,7 @@ function ConsoleTab({
           {paymentSystems.map((ps, i) => (
             <div key={i} className="method-item">
               <span className="method-code">{(ps as Record<string, unknown>).PaymentSystem as string}</span>
-              <span>{((ps as Record<string, unknown>).FiArray as Array<Record<string, unknown>>)?.[0]?.FiName ?? `Sistema ${(ps as Record<string, unknown>).PaymentSystem}`}</span>
+              <span>{String(((ps as Record<string, unknown>).FiArray as Array<Record<string, unknown>>)?.[0]?.FiName ?? `Sistema ${(ps as Record<string, unknown>).PaymentSystem}`)}</span>
             </div>
           ))}
         </div>
@@ -209,57 +391,66 @@ function ConsoleTab({
         </div>
       )}
 
-      {response && <ResponsePanel data={response.data} label={response.label} />}
+      <TramaHistory tramas={tramas} onSelect={setSelectedId} selected={selectedId} />
+      {selectedTrama && <TramaPanel trama={selectedTrama} onCopy={() => {}} />}
     </div>
   );
 }
 
-// ─── Template Tab Wrapper ─────────────────────────────────────────────────────
+// ─── Template Tab ─────────────────────────────────────────────────────────────
 
-function TemplateTab({
-  sessionToken, loading, onGetSession, onReset, theme,
-}: {
-  sessionToken: string;
-  loading: boolean;
-  onGetSession: () => void;
-  onReset: () => void;
+function TemplateTab({ sessionToken, loading, onGetSession, onReset, theme }: {
+  sessionToken: string; loading: boolean;
+  onGetSession: () => void; onReset: () => void;
   theme: 'minimal' | 'full' | 'dark';
 }) {
+  const [tramas, setTramas] = useState<TramaRecord[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [tokenized, setTokenized] = useState(false);
-  const [result, setResult] = useState<{ data: unknown; label: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  function addTrama(t: TramaRecord) {
+    setTramas((prev) => [t, ...prev]);
+    setSelectedId(t.id);
+  }
+
   async function handleSubmit({ cardFormData }: CardFormSubmitPayload) {
-    if (!sessionToken) throw new Error('No hay sesión activa. Inicia sesión primero.');
+    if (!sessionToken) throw new Error('No hay sesión activa.');
+    setError(null);
 
-    const resp = await callProxy('tokenCommand', {
-      SessionToken: sessionToken,
-      Command: 'SAVE',
-      TokenInfoArray: [
-        { AttributeCode: 0,  AttributeDesc: 'CardNumber',        AttributeValue: cardFormData.cardNumber },
-        { AttributeCode: 2,  AttributeDesc: 'PaymentSystem',     AttributeValue: cardFormData.paymentSystem },
-        { AttributeCode: 4,  AttributeDesc: 'ExpirationDate',    AttributeValue: cardFormData.expirationDate },
-        { AttributeCode: 6,  AttributeDesc: 'Usermail',          AttributeValue: cardFormData.email ?? '' },
-        { AttributeCode: 7,  AttributeDesc: 'MobileCountryCode', AttributeValue: cardFormData.mobileCountryCode ?? '' },
-        { AttributeCode: 8,  AttributeDesc: 'MobileNumber',      AttributeValue: cardFormData.mobileNumber ?? '' },
-        { AttributeCode: 17, AttributeDesc: 'CardHolderName',    AttributeValue: cardFormData.cardHolderName },
-        { AttributeCode: 18, AttributeDesc: 'CardHolderIdType',  AttributeValue: cardFormData.cardHolderIdType ?? '' },
-        { AttributeCode: 19, AttributeDesc: 'CardHolderId',      AttributeValue: cardFormData.cardHolderId ?? '' },
-        { AttributeCode: 22, AttributeDesc: 'AccountType',       AttributeValue: '0' },
-      ],
-    });
+    const tokenInfoArray = [
+      { AttributeCode: 0,  AttributeDesc: 'CardNumber',        AttributeValue: cardFormData.cardNumber },
+      { AttributeCode: 2,  AttributeDesc: 'PaymentSystem',     AttributeValue: cardFormData.paymentSystem },
+      { AttributeCode: 4,  AttributeDesc: 'ExpirationDate',    AttributeValue: cardFormData.expirationDate },
+      { AttributeCode: 6,  AttributeDesc: 'Usermail',          AttributeValue: cardFormData.email ?? '' },
+      { AttributeCode: 7,  AttributeDesc: 'MobileCountryCode', AttributeValue: cardFormData.mobileCountryCode ?? '' },
+      { AttributeCode: 8,  AttributeDesc: 'MobileNumber',      AttributeValue: cardFormData.mobileNumber ?? '' },
+      { AttributeCode: 17, AttributeDesc: 'CardHolderName',    AttributeValue: cardFormData.cardHolderName },
+      { AttributeCode: 18, AttributeDesc: 'CardHolderIdType',  AttributeValue: cardFormData.cardHolderIdType ?? '' },
+      { AttributeCode: 19, AttributeDesc: 'CardHolderId',      AttributeValue: cardFormData.cardHolderId ?? '' },
+      { AttributeCode: 22, AttributeDesc: 'AccountType',       AttributeValue: '0' },
+    ].filter((a) => a.AttributeValue !== '');
 
-    if (resp.ReturnCode !== 'SUCCESS') {
-      throw new Error(resp.ReturnDesc ?? `ReturnCode: ${resp.ReturnCode}`);
+    try {
+      const resp = await callProxy('tokenCommand', {
+        SessionToken: sessionToken,
+        Command: 'SAVE',
+        TokenInfoArray: tokenInfoArray,
+      }, addTrama);
+
+      if (resp.ReturnCode !== 'SUCCESS') {
+        throw new Error(resp.ReturnDesc as string ?? `ReturnCode: ${resp.ReturnCode}`);
+      }
+      setTokenized(true);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(msg);
     }
-
-    setResult({ data: resp, label: 'tokenCommand — SAVE' });
-    setTokenized(true);
   }
 
-  function handleError(err: SubmitError) {
-    setError(err.message);
-  }
+  function handleError(err: SubmitError) { setError(err.message); }
+
+  const selectedTrama = tramas.find((t) => t.id === selectedId) ?? tramas[0] ?? null;
 
   if (!sessionToken) {
     return (
@@ -286,10 +477,11 @@ function TemplateTab({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-        <button className="btn-ghost" onClick={onReset} style={{ fontSize: '0.85rem' }}>
-          🔄 Nueva sesión
-        </button>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ fontSize: '0.82rem', color: '#64748b', fontFamily: 'monospace' }}>
+          {tokenized && <span style={{ color: '#10b981', fontWeight: 700 }}>✅ Tokenización exitosa</span>}
+        </div>
+        <button className="btn-ghost" onClick={onReset} style={{ fontSize: '0.85rem' }}>🔄 Nueva sesión</button>
       </div>
 
       {error && (
@@ -317,7 +509,13 @@ function TemplateTab({
         )}
       </div>
 
-      {result && <ResponsePanel data={result.data} label={result.label} />}
+      {/* Trama viewer — aparece después de cada submit */}
+      {tramas.length > 0 && (
+        <div>
+          <TramaHistory tramas={tramas} onSelect={setSelectedId} selected={selectedId} />
+          {selectedTrama && <TramaPanel trama={selectedTrama} onCopy={() => {}} />}
+        </div>
+      )}
     </div>
   );
 }
@@ -329,16 +527,17 @@ export default function App() {
   const [sessionToken, setSessionToken] = useState('');
   const [loading, setLoading] = useState(false);
   const [tokenized, setTokenized] = useState(false);
+  const [sessionTrama, setSessionTrama] = useState<TramaRecord | null>(null);
 
   async function handleGetSession() {
     setLoading(true);
     try {
-      const data = await callProxy('getSessionToken');
-      if (data?.ReturnCode === 'SUCCESS' && data?.SessionToken) {
-        setSessionToken(data.SessionToken);
-      }
-    } catch {
-      // Error shown inline in each tab
+      await callProxy('getSessionToken', {}, (t) => {
+        setSessionTrama(t);
+        if (t.success) {
+          setSessionToken((t.response as Record<string, unknown>).SessionToken as string);
+        }
+      });
     } finally {
       setLoading(false);
     }
@@ -347,6 +546,7 @@ export default function App() {
   function handleReset() {
     setSessionToken('');
     setTokenized(false);
+    setSessionTrama(null);
   }
 
   return (
@@ -364,40 +564,24 @@ export default function App() {
       <main className="app-main">
         <TabBar active={activeTab} onChange={setActiveTab} />
 
+        {/* getSessionToken trama — visible en todas las tabs */}
+        {sessionTrama && !sessionToken && (
+          <div style={{ marginBottom: 20 }}>
+            <TramaPanel trama={sessionTrama} onCopy={() => {}} />
+          </div>
+        )}
+
         {activeTab === 'console' && (
-          <ConsoleTab
-            sessionToken={sessionToken}
-            loading={loading}
-            onGetSession={handleGetSession}
-            onReset={handleReset}
-          />
+          <ConsoleTab sessionToken={sessionToken} loading={loading} onGetSession={handleGetSession} onReset={handleReset} />
         )}
         {activeTab === 'minimal' && (
-          <TemplateTab
-            sessionToken={sessionToken}
-            loading={loading}
-            onGetSession={handleGetSession}
-            onReset={handleReset}
-            theme="minimal"
-          />
+          <TemplateTab sessionToken={sessionToken} loading={loading} onGetSession={handleGetSession} onReset={handleReset} theme="minimal" />
         )}
         {activeTab === 'full' && (
-          <TemplateTab
-            sessionToken={sessionToken}
-            loading={loading}
-            onGetSession={handleGetSession}
-            onReset={handleReset}
-            theme="full"
-          />
+          <TemplateTab sessionToken={sessionToken} loading={loading} onGetSession={handleGetSession} onReset={handleReset} theme="full" />
         )}
         {activeTab === 'dark' && (
-          <TemplateTab
-            sessionToken={sessionToken}
-            loading={loading}
-            onGetSession={handleGetSession}
-            onReset={handleReset}
-            theme="dark"
-          />
+          <TemplateTab sessionToken={sessionToken} loading={loading} onGetSession={handleGetSession} onReset={handleReset} theme="dark" />
         )}
       </main>
     </div>

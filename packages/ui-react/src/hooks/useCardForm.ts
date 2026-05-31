@@ -214,7 +214,7 @@ export function useCardForm({
   const handleBlur = useCallback((field: string) => {
     setTouched((prev) => new Set(prev).add(field));
     const currentFields = fieldsRef.current;
-    const err = validateOne(field, currentFields[field] ?? '', brand);
+    const err = validateOne(field, (currentFields as Record<string, string>)[field] ?? '', brand);
     setErrors((prev) => {
       if (err) return { ...prev, [field]: err };
       const { [field]: _removed, ...rest } = prev;

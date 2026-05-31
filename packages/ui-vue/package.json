@@ -1,0 +1,18 @@
+{
+  "name": "@ecollect/ui-vue",
+  "version": "0.1.0",
+  "description": "Vue 3 card form component for ecollect",
+  "type": "module",
+  "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "sideEffects": false,
+  "files": ["src"],
+  "peerDependencies": {
+    "vue": ">=3.3.0"
+  },
+  "dependencies": {
+    "@ecollect/ui-core": "*"
+  }
+}

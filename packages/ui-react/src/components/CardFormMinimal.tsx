@@ -67,7 +67,7 @@ export function CardFormMinimal({ onSubmit, onError, onSuccess, config = {} }: C
       {/* Card number */}
       <CardField
         id="cardNumber"
-        label={fieldConfig.cardHolderName?.label ?? (lang === 'es' ? 'Número de tarjeta' : 'Card number')}
+        label={lang === 'es' ? 'Número de tarjeta' : 'Card number'}
         value={fields.cardNumber}
         onChange={(v) => handleChange('cardNumber', v)}
         onBlur={() => handleBlur('cardNumber')}

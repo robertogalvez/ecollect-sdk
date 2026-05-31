@@ -188,7 +188,7 @@ export function CardFormDark({ onSubmit, onError, onSuccess, config = {} }: Card
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: 28, alignItems: 'start' }}>
             <div style={{ position: 'sticky', top: 80 }}>
               <CardPreview cardNumber={fields.cardNumber} cardHolderName={fields.cardHolderName}
-                expiry={fields.expiry} cvv={fields.cvv} isFlipped={cvvFocused} brand={brand} />
+                expiry={fields.expiry} cvvLength={fields.cvv.length} isFlipped={cvvFocused} brand={brand} />
             </div>
             {formFields}
           </div>
