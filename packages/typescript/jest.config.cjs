@@ -19,6 +19,7 @@ const config = {
       },
     ],
   },
+  setupFiles: ['<rootDir>/jest.setup.cjs'],
   testMatch: ['**/tests/**/*.test.ts'],
   collectCoverageFrom: ['src/**/*.ts', '!src/**/*.d.ts'],
   coverageDirectory: 'coverage',
