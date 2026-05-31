@@ -20,7 +20,7 @@ use PHPUnit\Framework\TestCase;
 
 class ErrorMappingTest extends TestCase
 {
-    /** @dataProvider errorMappingProvider */
+    #[\PHPUnit\Framework\Attributes\DataProvider('errorMappingProvider')]
     public function testErrorMapping(string $returnCode, string $expectedClass): void
     {
         $exception = ErrorMapper::map($returnCode);
@@ -28,7 +28,7 @@ class ErrorMappingTest extends TestCase
         $this->assertSame($returnCode, $exception->getReturnCode());
     }
 
-    public function errorMappingProvider(): array
+    public static function errorMappingProvider(): array
     {
         return [
             ['FAIL_APIEXPIREDSESSION',    SessionExpiredException::class],

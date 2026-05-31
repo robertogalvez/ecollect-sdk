@@ -12,5 +12,5 @@ jobs:
         with: { python-version: '${{ matrix.python-version }}' }
       - run: pip install -e ".[dev]"
         working-directory: packages/python
-      - run: pytest --cov=ecollect --cov-report=xml
+      - run: python -m pytest --cov=ecollect --cov-report=xml
         working-directory: packages/python

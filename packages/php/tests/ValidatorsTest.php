@@ -17,19 +17,19 @@ class ValidatorsTest extends TestCase
     // Luhn tests
     // -------------------------------------------------------------------------
 
-    /** @dataProvider validCardProvider */
+    #[\PHPUnit\Framework\Attributes\DataProvider('validCardProvider')]
     public function testLuhnValidCards(string $card): void
     {
         $this->assertTrue(Validators::luhnCheck($card), "Expected {$card} to pass Luhn");
     }
 
-    /** @dataProvider invalidCardProvider */
+    #[\PHPUnit\Framework\Attributes\DataProvider('invalidCardProvider')]
     public function testLuhnInvalidCards(string $card): void
     {
         $this->assertFalse(Validators::luhnCheck($card), "Expected {$card} to fail Luhn");
     }
 
-    public function validCardProvider(): array
+    public static function validCardProvider(): array
     {
         return [
             ['4111111111111111'], // Visa test
@@ -39,7 +39,7 @@ class ValidatorsTest extends TestCase
         ];
     }
 
-    public function invalidCardProvider(): array
+    public static function invalidCardProvider(): array
     {
         return [
             ['1234567890123456'],
