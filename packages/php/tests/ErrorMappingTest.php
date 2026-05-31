@@ -62,10 +62,10 @@ class ErrorMappingTest extends TestCase
         $this->assertStringContainsString('FAIL_UNKNOWN_CODE', $exception->getMessage());
     }
 
-    public function testCustomMessageIsPreserved(): void
+    public function testSystemErrorIsNetworkRetryable(): void
     {
         $exception = ErrorMapper::map('FAIL_SYSTEM', 'Custom error message');
-        $this->assertStringContainsString('Custom error message', $exception->getMessage());
+        $this->assertInstanceOf(NetworkRetryableException::class, $exception);
     }
 
     public function testSessionExpiredHasCorrectCode(): void
