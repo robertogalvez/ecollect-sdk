@@ -3,7 +3,6 @@ import type { Config } from 'jest';
 const config: Config = {
   preset: 'ts-jest',
   testEnvironment: 'node',
-  extensionsToTreatAsEsm: ['.ts'],
   moduleNameMapper: {
     '^(\\.{1,2}/.*)\\.js$': '$1',
   },
@@ -11,10 +10,10 @@ const config: Config = {
     '^.+\\.tsx?$': [
       'ts-jest',
       {
-        useESM: true,
+        useESM: false,
         tsconfig: {
-          module: 'NodeNext',
-          moduleResolution: 'NodeNext',
+          module: 'CommonJS',
+          moduleResolution: 'Node',
         },
         diagnostics: { ignoreCodes: [151002] },
       },
