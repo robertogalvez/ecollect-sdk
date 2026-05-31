@@ -15,3 +15,5 @@ packages/python/.coverage
 packages/python/coverage.xml
 
 # (root package-lock.json is intentionally committed for workspace ci)
+# workspace subdirectory lock files must NOT be committed with npm workspaces
+packages/typescript/package-lock.json
