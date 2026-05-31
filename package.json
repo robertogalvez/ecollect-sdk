@@ -1,0 +1,9 @@
+{
+  "name": "ecollect-sdk-monorepo",
+  "private": true,
+  "workspaces": ["packages/typescript"],
+  "scripts": {
+    "test:typescript": "npm test --workspace=packages/typescript",
+    "build:typescript": "npm run build --workspace=packages/typescript"
+  }
+}

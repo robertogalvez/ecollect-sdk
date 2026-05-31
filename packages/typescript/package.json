@@ -33,6 +33,7 @@
     "test:coverage": "jest --coverage",
     "lint": "eslint src tests --ext .ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "build:check": "tsc --noEmit",
     "prepublishOnly": "npm run build && npm test"
   },
   "engines": {

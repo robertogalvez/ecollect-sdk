@@ -94,3 +94,7 @@ export { ReconciliationModule } from './modules/reconciliation.js';
 export { CustomersModule } from './modules/customers.js';
 export { PaymentSystemsModule } from './modules/paymentSystems.js';
 export { PaymentLinksModule } from './modules/paymentLinks.js';
+
+// Sandbox (testing / development only)
+export { SandboxInterceptor, SANDBOX_SCENARIOS, sandbox } from './sandbox/index.js';
+export type { SandboxScenario } from './sandbox/index.js';
