@@ -1,0 +1,9 @@
+.build/
+*.o
+*.d
+# Package.resolved is optional — uncomment to ignore it
+# Package.resolved
+.DS_Store
+*.xcodeproj
+*.xcworkspace
+.swiftpm/
