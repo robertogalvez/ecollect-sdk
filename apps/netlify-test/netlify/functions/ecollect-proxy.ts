@@ -13,7 +13,9 @@ const ALLOWED_ENDPOINTS = new Set([
 ]);
 
 // Strip fields that should never reach the browser
-const SENSITIVE_RESPONSE_FIELDS = ['ApiKey', 'SessionToken', 'CardNumber', 'SecureCode'];
+// NOTE: SessionToken is intentionally kept — it is a short-lived session credential
+// (not the API key) and the frontend needs it to make subsequent calls.
+const SENSITIVE_RESPONSE_FIELDS = ['ApiKey', 'CardNumber', 'SecureCode'];
 
 function scrubResponse(data: Record<string, unknown>): Record<string, unknown> {
   const scrubbed = { ...data };
