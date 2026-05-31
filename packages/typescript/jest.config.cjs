@@ -1,9 +1,7 @@
-import type { Config } from 'jest';
-
-const config: Config = {
+/** @type {import('jest').Config} */
+const config = {
   preset: 'ts-jest',
   testEnvironment: 'node',
-  extensionsToTreatAsEsm: ['.ts'],
   moduleNameMapper: {
     '^(\\.{1,2}/.*)\\.js$': '$1',
   },
@@ -11,12 +9,13 @@ const config: Config = {
     '^.+\\.tsx?$': [
       'ts-jest',
       {
-        useESM: true,
+        useESM: false,
+        diagnostics: false,
         tsconfig: {
-          module: 'NodeNext',
-          moduleResolution: 'NodeNext',
+          module: 'CommonJS',
+          moduleResolution: 'Node10',
+          esModuleInterop: true,
         },
-        diagnostics: { ignoreCodes: [151002] },
       },
     ],
   },
@@ -26,4 +25,4 @@ const config: Config = {
   coverageReporters: ['text', 'lcov'],
 };
 
-export default config;
+module.exports = config;
