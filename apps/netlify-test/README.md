@@ -2,6 +2,17 @@
 
 A real-time testing dashboard for the ecollect payment SDK. Test all SDK functionality directly in your browser.
 
+## 🔐 Security Architecture
+
+This app is designed so the **API Key never touches the browser**:
+
+```
+Browser → Netlify Function (server-side) → ecollect API
+             ↑ API Key lives here only
+```
+
+The Netlify Function injects credentials server-side. The React frontend has zero knowledge of your API key. For other deployment architectures (Express, Laravel, Django, Spring Boot, AWS Lambda, etc.) see the [Security Guide](../../SECURITY.md).
+
 ## 🚀 Quick Start
 
 ### Local Development
