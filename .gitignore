@@ -5,3 +5,14 @@ coverage/
 *.d.ts.map
 .env
 .env.local
+
+# PHP test artifacts
+packages/php/.phpunit.result.cache
+packages/php/phpunit.xml.bak
+
+# Python test artifacts
+packages/python/.coverage
+packages/python/coverage.xml
+
+# Root package-lock (not part of any package)
+package-lock.json
