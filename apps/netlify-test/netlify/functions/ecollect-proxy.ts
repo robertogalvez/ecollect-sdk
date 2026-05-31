@@ -13,7 +13,9 @@ const ALLOWED_ENDPOINTS = new Set([
 ]);
 
 // Strip fields that should never reach the browser
-const SENSITIVE_RESPONSE_FIELDS = ['ApiKey', 'SessionToken', 'CardNumber', 'SecureCode'];
+// NOTE: SessionToken is intentionally kept — it is a short-lived session credential
+// (not the API key) and the frontend needs it to make subsequent calls.
+const SENSITIVE_RESPONSE_FIELDS = ['ApiKey', 'CardNumber', 'SecureCode'];
 
 function scrubResponse(data: Record<string, unknown>): Record<string, unknown> {
   const scrubbed = { ...data };
@@ -76,13 +78,32 @@ const handler: Handler = async (event) => {
   };
 
   try {
+    console.log(`[ecollect-proxy] → ${url}`);
+    console.log(`[ecollect-proxy] body: ${JSON.stringify({ ...requestBody, ApiKey: '***' })}`);
+
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(requestBody),
     });
 
-    const data = (await response.json()) as Record<string, unknown>;
+    console.log(`[ecollect-proxy] ← HTTP ${response.status} ${response.statusText}`);
+
+    const rawText = await response.text();
+    console.log(`[ecollect-proxy] raw response (first 300 chars): ${rawText.substring(0, 300)}`);
+
+    let data: Record<string, unknown>;
+    try {
+      data = JSON.parse(rawText) as Record<string, unknown>;
+    } catch {
+      return {
+        statusCode: 502,
+        body: JSON.stringify({
+          error: `ecollect returned non-JSON (HTTP ${response.status})`,
+          preview: rawText.substring(0, 200),
+        }),
+      };
+    }
 
     return {
       statusCode: 200,
@@ -92,7 +113,7 @@ const handler: Handler = async (event) => {
     console.error('ecollect proxy error:', error);
     return {
       statusCode: 502,
-      body: JSON.stringify({ error: 'Gateway error — check server logs' }),
+      body: JSON.stringify({ error: String(error) }),
     };
   }
 };

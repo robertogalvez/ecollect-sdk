@@ -1,0 +1,16 @@
+[build]
+base    = "apps/netlify-test"
+command = "npm install && npm run build"
+publish = "apps/netlify-test/dist"
+functions = "apps/netlify-test/netlify/functions"
+
+[dev]
+command    = "npm run dev:vite"
+targetPort = 3000
+port       = 8888
+autoLaunch = false
+
+[[redirects]]
+from   = "/*"
+to     = "/index.html"
+status = 200

@@ -4,7 +4,10 @@ functions = "netlify/functions"
 publish = "dist"
 
 [dev]
-command = "npm run dev"
+command = "npm run dev:vite"
+targetPort = 3000
+port = 8888
+autoLaunch = false
 
 [context.production]
 environment = { ECOLLECT_ENVIRONMENT = "prod" }
