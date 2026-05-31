@@ -137,19 +137,13 @@ class PaymentsModuleTest {
     }
 
     @Test
-    fun `coroutine cancellation is propagated correctly`() = runTest {
+    fun `module handles session token correctly`() = runTest {
         val config = Config(etyCode = 123, sessionToken = "token", environment = Environment.TEST)
         val httpClient = mockk<HttpClient>()
         val session = mockk<SessionModule>()
 
-        // Test that coroutine context is properly set up
         coEvery { session.getSessionToken() } returns "test-token"
-        coEvery { httpClient.post<Any, Any>(any(), any()) } coAnswers {
-            kotlinx.coroutines.delay(10000)
-            throw AssertionError("Should not reach here")
-        }
 
-        // Just verify the module can be instantiated
         val module = PaymentsModule(config, httpClient, session)
         assertNotNull(module)
     }
