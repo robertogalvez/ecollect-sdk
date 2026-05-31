@@ -10,11 +10,12 @@ const config = {
       'ts-jest',
       {
         useESM: false,
+        diagnostics: false,
         tsconfig: {
           module: 'CommonJS',
-          moduleResolution: 'Node',
+          moduleResolution: 'Node10',
+          esModuleInterop: true,
         },
-        diagnostics: { ignoreCodes: [151002] },
       },
     ],
   },
