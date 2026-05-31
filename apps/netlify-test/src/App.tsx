@@ -39,8 +39,11 @@ export default function App() {
         ...payload,
       });
       setResponse(data.data);
+      // Store session token in memory only — never render it in full
       if (data.data.SessionToken) {
         setSessionToken(data.data.SessionToken);
+        // Remove from displayed response so it doesn't appear in DevTools elements panel
+        delete data.data.SessionToken;
       }
     } catch (error: any) {
       setResponse({ error: error.message });
@@ -141,7 +144,8 @@ export default function App() {
         <section className="session">
           <h2>✅ Active Session</h2>
           <div className="token-display">
-            <code>{sessionToken.substring(0, 50)}...</code>
+            {/* Show only first 8 chars — enough to confirm a session exists */}
+            <code>ses_{'*'.repeat(20)} ({sessionToken.substring(0, 8)}…)</code>
           </div>
         </section>
       )}
