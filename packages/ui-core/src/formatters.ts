@@ -119,8 +119,11 @@ export function parseMultiFieldPaste(text: string): Partial<{
     text = text.replace(expiryMatch[0], '').trim();
   }
 
+  // Cap input to prevent ReDoS on pathological paste strings
+  text = text.slice(0, 200);
+
   // Extract card number (13-19 consecutive digits, possibly spaced)
-  const cardMatch = text.match(/\b(\d[\d\s]{11,21}\d)\b/);
+  const cardMatch = text.match(/\b(\d[\d ]{10,20}\d)\b/);
   if (cardMatch) {
     result.cardNumber = sanitizeNumber(cardMatch[1]);
     text = text.replace(cardMatch[0], '').trim();

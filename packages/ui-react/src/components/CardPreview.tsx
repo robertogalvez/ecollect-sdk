@@ -5,12 +5,12 @@ interface CardPreviewProps {
   cardNumber: string;       // raw digits
   cardHolderName: string;
   expiry: string;           // MM / YY display
-  cvv: string;
+  cvvLength: number;        // only the count — never the raw CVV digits
   isFlipped: boolean;       // true when CVV field is focused
   brand: BrandInfo;
 }
 
-export function CardPreview({ cardNumber, cardHolderName, expiry, cvv, isFlipped, brand }: CardPreviewProps) {
+export function CardPreview({ cardNumber, cardHolderName, expiry, cvvLength, isFlipped, brand }: CardPreviewProps) {
   // Show only last 4 digits after Luhn passes; mask the rest
   const digits = cardNumber.replace(/\D/g, '');
   const displayNumber = maskCardNumber(digits, brand.spacing);
@@ -44,7 +44,7 @@ export function CardPreview({ cardNumber, cardHolderName, expiry, cvv, isFlipped
           <div style={styles.stripe} />
           <div style={styles.cvvArea}>
             <div style={styles.cardLabel}>Código de seguridad / Security Code</div>
-            <div style={styles.cvvBox}>{cvv ? '•'.repeat(cvv.length) : '•••'}</div>
+            <div style={styles.cvvBox}>{'•'.repeat(cvvLength || 3)}</div>
           </div>
           <div style={{ ...styles.cardLabel, textAlign: 'center', marginTop: 'auto', opacity: 0.5 }}>
             {brand.brand !== 'Unknown' ? brand.brand : ''}

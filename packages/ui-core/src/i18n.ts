@@ -95,6 +95,7 @@ export function interpolate(template: string, vars: Record<string, string>): str
 function deepMerge(base: object, overrides: object): object {
   const result = { ...base };
   for (const [key, value] of Object.entries(overrides)) {
+    if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
     if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
       result[key as keyof typeof result] = deepMerge(
         (base as Record<string, object>)[key] ?? {},

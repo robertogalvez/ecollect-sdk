@@ -122,8 +122,9 @@ export function validateField(
 
     case 'cardHolderName': {
       if (!trimmed) return messages.cardHolderName.required;
-      // Unicode-aware: count actual characters, not bytes
-      if ([...trimmed].length < 2) return messages.cardHolderName.tooShort;
+      const chars = [...trimmed];
+      if (chars.length < 2) return messages.cardHolderName.tooShort;
+      if (chars.length > 64) return messages.cardHolderName.tooShort;
       return null;
     }
 

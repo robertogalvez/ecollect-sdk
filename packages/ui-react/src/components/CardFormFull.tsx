@@ -249,7 +249,7 @@ export function CardFormFull({ onSubmit, onError, onSuccess, config = {} }: Card
         cardNumber={fields.cardNumber}
         cardHolderName={fields.cardHolderName}
         expiry={fields.expiry}
-        cvv={fields.cvv}
+        cvvLength={fields.cvv.length}
         isFlipped={cvvFocused}
         brand={brand}
       />

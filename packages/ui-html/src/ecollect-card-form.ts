@@ -20,6 +20,19 @@ import type {
   CardFormMessages,
 } from '@ecollect/ui-core';
 
+function escHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function validateCssColor(raw: string): string {
+  return /^#[0-9a-fA-F]{3,6}$/.test(raw) ? raw : '#6366f1';
+}
+
 const STYLES = `
   :host { display: block; font-family: inherit; }
   * { box-sizing: border-box; }
@@ -122,7 +135,7 @@ class EcollectCardForm extends HTMLElement {
   }
   private get showName() { return this.getAttribute('show-name') !== 'false'; }
   private get showEmail() { return this.getAttribute('show-email') === 'true'; }
-  private get themePrimary() { return this.getAttribute('theme-primary') ?? '#6366f1'; }
+  private get themePrimary() { return validateCssColor(this.getAttribute('theme-primary') ?? '#6366f1'); }
 
   private render() {
     const f = this.fields;
@@ -141,13 +154,16 @@ class EcollectCardForm extends HTMLElement {
     const errorHtml = (key: string) => {
       const st = f[key];
       if (!st || !st.touched || !st.error) return '';
-      return `<span class="error-msg" role="alert">✕ ${st.error}</span>`;
+      return `<span class="error-msg" role="alert">✕ ${escHtml(st.error)}</span>`;
     };
 
+    const safeTheme = validateCssColor(this.themePrimary);
+    const safeTheme2 = safeTheme === '#6366f1' ? '#4f46e5' : safeTheme;
+
     const html = `
-      <style>${STYLES.replace('#6366f1', this.themePrimary).replace('#4f46e5', this.themePrimary)}</style>
+      <style>${STYLES.replace('#6366f1', safeTheme).replace('#4f46e5', safeTheme2)}</style>
       <span class="sr-only" aria-live="polite" aria-atomic="true" id="brand-announcer">
-        ${brand.brand !== 'Unknown' ? interpolate(msgs.brandDetected, { brand: brand.brand }) : ''}
+        ${brand.brand !== 'Unknown' ? escHtml(interpolate(msgs.brandDetected, { brand: brand.brand })) : ''}
       </span>
       <form id="ecollect-form" novalidate>
         <div class="field-group">
@@ -157,12 +173,12 @@ class EcollectCardForm extends HTMLElement {
               id="ec-cardNumber" name="cardNumber"
               type="tel" inputmode="numeric" autocomplete="cc-number"
               placeholder="1234 5678 9012 3456" maxlength="23"
-              value="${f.cardNumber.value}"
+              value="${escHtml(f.cardNumber.value)}"
               aria-invalid="${!!f.cardNumber.error || false}"
               ${inputStyle('cardNumber')}
             />
             ${brand.brand !== 'Unknown'
-              ? `<span class="brand-badge" style="background:${brand.color}">${brand.brand}</span>`
+              ? `<span class="brand-badge" style="background:${validateCssColor(brand.color)}">${escHtml(brand.brand)}</span>`
               : ''}
           </div>
           ${errorHtml('cardNumber')}
@@ -175,7 +191,7 @@ class EcollectCardForm extends HTMLElement {
               id="ec-expiry" name="expiry"
               type="tel" inputmode="numeric" autocomplete="cc-exp"
               placeholder="MM / YY" maxlength="7"
-              value="${f.expiry.value}"
+              value="${escHtml(f.expiry.value)}"
               aria-invalid="${!!f.expiry.error || false}"
               ${inputStyle('expiry')}
             />
@@ -188,7 +204,7 @@ class EcollectCardForm extends HTMLElement {
               type="tel" inputmode="numeric" autocomplete="cc-csc"
               placeholder="${brand.brand === 'Amex' ? '1234' : '123'}"
               maxlength="${getCvvLength(brand.brand)}"
-              value="${f.cvv.value}"
+              value="${escHtml(f.cvv.value)}"
               aria-invalid="${!!f.cvv.error || false}"
               ${inputStyle('cvv')}
             />
@@ -206,7 +222,7 @@ class EcollectCardForm extends HTMLElement {
             id="ec-name" name="cardHolderName"
             type="text" autocomplete="cc-name"
             placeholder="${lang === 'es' ? 'Como aparece en la tarjeta' : 'As it appears on the card'}"
-            value="${f.cardHolderName.value}"
+            value="${escHtml(f.cardHolderName.value)}"
             ${inputStyle('cardHolderName')}
           />
           ${errorHtml('cardHolderName')}
@@ -222,7 +238,7 @@ class EcollectCardForm extends HTMLElement {
             id="ec-email" name="email"
             type="email" autocomplete="email"
             placeholder="correo@ejemplo.com"
-            value="${f.email.value}"
+            value="${escHtml(f.email.value)}"
             aria-invalid="${!!f.email.error || false}"
             ${inputStyle('email')}
           />
@@ -230,7 +246,7 @@ class EcollectCardForm extends HTMLElement {
         </div>` : ''}
 
         <button type="submit" ${this.isSubmitting ? 'disabled' : ''}>
-          ${this.isSubmitting ? msgs.submitting : this.submitLabel}
+          ${escHtml(this.isSubmitting ? msgs.submitting : this.submitLabel)}
         </button>
       </form>
     `;

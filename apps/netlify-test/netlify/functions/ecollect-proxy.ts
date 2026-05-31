@@ -16,6 +16,7 @@ const ALLOWED_ENDPOINTS = new Set([
 // NOTE: SessionToken is intentionally kept — it is a short-lived session credential
 // (not the API key) and the frontend needs it to make subsequent calls.
 const SENSITIVE_RESPONSE_FIELDS = ['ApiKey', 'CardNumber', 'SecureCode'];
+const SENSITIVE_LOG_FIELDS_RE = /^(cardnumber|securecode|cvv|cvc|cvc2|cvv2|pan|expirationdate)$/i;
 
 function scrubResponse(data: Record<string, unknown>): Record<string, unknown> {
   const scrubbed = { ...data };
@@ -25,6 +26,14 @@ function scrubResponse(data: Record<string, unknown>): Record<string, unknown> {
     }
   }
   return scrubbed;
+}
+
+function scrubForLog(body: Record<string, unknown>): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(body)) {
+    result[key] = SENSITIVE_LOG_FIELDS_RE.test(key) ? '***' : value;
+  }
+  return result;
 }
 
 const handler: Handler = async (event) => {
@@ -79,7 +88,7 @@ const handler: Handler = async (event) => {
 
   try {
     console.log(`[ecollect-proxy] → ${url}`);
-    console.log(`[ecollect-proxy] body: ${JSON.stringify({ ...requestBody, ApiKey: '***' })}`);
+    console.log(`[ecollect-proxy] body: ${JSON.stringify(scrubForLog({ ...requestBody, ApiKey: '***' }))}`);
 
     const response = await fetch(url, {
       method: 'POST',
@@ -98,10 +107,7 @@ const handler: Handler = async (event) => {
     } catch {
       return {
         statusCode: 502,
-        body: JSON.stringify({
-          error: `ecollect returned non-JSON (HTTP ${response.status})`,
-          preview: rawText.substring(0, 200),
-        }),
+        body: JSON.stringify({ error: `Upstream error (HTTP ${response.status})` }),
       };
     }
 
@@ -113,7 +119,7 @@ const handler: Handler = async (event) => {
     console.error('ecollect proxy error:', error);
     return {
       statusCode: 502,
-      body: JSON.stringify({ error: String(error) }),
+      body: JSON.stringify({ error: 'Upstream connection error' }),
     };
   }
 };
