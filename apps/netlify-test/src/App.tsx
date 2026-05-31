@@ -1,142 +1,48 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import axios from 'axios';
+import { CardFormMinimal, CardFormFull, CardFormDark } from '@ecollect/ui-react';
+import type { CardFormSubmitPayload, SubmitError } from '@ecollect/ui-core';
 import './App.css';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface CardForm {
-  cardNumber: string;
-  expiry: string;
-  cvv: string;
-  cardHolderName: string;
-  email: string;
-  docType: string;
-  docNumber: string;
-  mobileCountryCode: string;
-  mobileNumber: string;
-  amount: string;
-  currency: string;
-}
+type AppTab = 'console' | 'minimal' | 'full' | 'dark';
+type Step = 'init' | 'ready' | 'done';
 
 interface SavedToken {
   tokenId: string;
   maskedCard: string;
   brand: string;
-  expiry: string;
 }
 
-type Step = 'init' | 'form' | 'methods' | 'tokens' | 'done';
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function detectBrand(num: string): { name: string; color: string; icon: string } {
-  const n = num.replace(/\s/g, '');
-  if (/^4/.test(n))                        return { name: 'Visa',       color: '#1a1f71', icon: '💳' };
-  if (/^5[1-5]/.test(n))                  return { name: 'Mastercard', color: '#eb001b', icon: '💳' };
-  if (/^3[47]/.test(n))                   return { name: 'Amex',       color: '#007bc1', icon: '💳' };
-  if (/^6(?:011|5)/.test(n))              return { name: 'Discover',   color: '#ff6600', icon: '💳' };
-  if (/^3(?:0[0-5]|[68])/.test(n))       return { name: 'Diners',     color: '#004a97', icon: '💳' };
-  return { name: '', color: '#6b7280', icon: '💳' };
-}
-
-function formatCardNumber(value: string): string {
-  return value.replace(/\D/g, '').substring(0, 16).replace(/(.{4})/g, '$1 ').trim();
-}
-
-function formatExpiry(value: string): string {
-  const digits = value.replace(/\D/g, '').substring(0, 4);
-  if (digits.length >= 3) return `${digits.substring(0, 2)}/${digits.substring(2)}`;
-  return digits;
-}
-
-function expiryToApiFormat(expiry: string): string {
-  // Convert MM/YY → MM/YYYY
-  const [mm, yy] = expiry.split('/');
-  if (!mm || !yy) return expiry;
-  const year = yy.length === 2 ? `20${yy}` : yy;
-  return `${mm}/${year}`;
-}
-
-function paymentSystemFromBrand(brand: string): string {
-  const map: Record<string, string> = {
-    Visa: '1', Mastercard: '2', Amex: '3', Discover: '6',
-  };
-  return map[brand] ?? '1';
-}
-
-// ─── API call ─────────────────────────────────────────────────────────────────
+// ─── API helper ───────────────────────────────────────────────────────────────
 
 async function callProxy(endpoint: string, payload: Record<string, unknown> = {}) {
-  const { data } = await axios.post('/.netlify/functions/ecollect-proxy', {
-    endpoint,
-    ...payload,
-  });
+  const { data } = await axios.post('/.netlify/functions/ecollect-proxy', { endpoint, ...payload });
   return data;
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function CardPreview({ form, flipped }: { form: CardForm; flipped: boolean }) {
-  const brand = detectBrand(form.cardNumber);
-  const display = form.cardNumber.padEnd(19, '·').substring(0, 19);
-
-  return (
-    <div className={`card-preview ${flipped ? 'flipped' : ''}`}>
-      <div className="card-front" style={{ background: `linear-gradient(135deg, ${brand.color} 0%, #2d3748 100%)` }}>
-        <div className="card-chip">
-          <div className="chip-lines" />
-        </div>
-        <div className="card-number-display">
-          {display.replace(/(.{4})/g, '$1 ').trim()}
-        </div>
-        <div className="card-bottom">
-          <div>
-            <div className="card-label">Titular</div>
-            <div className="card-value">{form.cardHolderName || 'NOMBRE APELLIDO'}</div>
-          </div>
-          <div>
-            <div className="card-label">Vence</div>
-            <div className="card-value">{form.expiry || 'MM/AA'}</div>
-          </div>
-          {brand.name && <div className="card-brand">{brand.name}</div>}
-        </div>
-      </div>
-      <div className="card-back">
-        <div className="card-stripe" />
-        <div className="card-cvv-area">
-          <div className="card-label">CVV</div>
-          <div className="cvv-box">{form.cvv ? '•'.repeat(form.cvv.length) : '•••'}</div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function StatusBadge({ step, sessionActive }: { step: Step; sessionActive: boolean }) {
+function StatusBadge({ sessionActive, tokenized }: { sessionActive: boolean; tokenized: boolean }) {
   return (
     <div className="status-bar">
       <span className={`badge ${sessionActive ? 'badge-green' : 'badge-gray'}`}>
         {sessionActive ? '🔐 Sesión activa' : '🔒 Sin sesión'}
       </span>
-      <span className="badge badge-blue">
-        {step === 'init' && '① Iniciar sesión'}
-        {step === 'form' && '② Datos de tarjeta'}
-        {step === 'methods' && '③ Métodos de pago'}
-        {step === 'tokens' && '④ Tokens guardados'}
-        {step === 'done' && '✅ Completado'}
-      </span>
+      {tokenized && <span className="badge badge-green">✅ Tokenizado</span>}
     </div>
   );
 }
 
 function ResponsePanel({ data, label }: { data: unknown; label: string }) {
-  const success = (data as any)?.ReturnCode === 'SUCCESS';
+  const success = (data as Record<string, unknown>)?.ReturnCode === 'SUCCESS';
   return (
     <div className={`response-panel ${success ? 'response-success' : 'response-error'}`}>
       <div className="response-header">
         <span>{success ? '✅' : '⚠️'} {label}</span>
         <span className={`rc-badge ${success ? 'rc-ok' : 'rc-fail'}`}>
-          {(data as any)?.ReturnCode ?? 'ERROR'}
+          {(data as Record<string, unknown>)?.ReturnCode as string ?? 'ERROR'}
         </span>
       </div>
       <pre>{JSON.stringify(data, null, 2)}</pre>
@@ -144,133 +50,304 @@ function ResponsePanel({ data, label }: { data: unknown; label: string }) {
   );
 }
 
-// ─── Main App ─────────────────────────────────────────────────────────────────
+function TabBar({ active, onChange }: { active: AppTab; onChange: (t: AppTab) => void }) {
+  const tabs: { id: AppTab; label: string }[] = [
+    { id: 'console', label: '🖥 Consola API' },
+    { id: 'minimal', label: '⬜ Minimal' },
+    { id: 'full', label: '💳 Full + Preview' },
+    { id: 'dark', label: '🌑 Dark Glass' },
+  ];
+  return (
+    <div style={{ display: 'flex', gap: 4, marginBottom: 28, borderBottom: '2px solid #e2e8f0', paddingBottom: 0 }}>
+      {tabs.map((t) => (
+        <button
+          key={t.id}
+          onClick={() => onChange(t.id)}
+          style={{
+            padding: '10px 20px',
+            border: 'none',
+            borderBottom: active === t.id ? '2px solid #6366f1' : '2px solid transparent',
+            background: 'none',
+            cursor: 'pointer',
+            fontWeight: active === t.id ? 700 : 400,
+            color: active === t.id ? '#6366f1' : '#64748b',
+            fontSize: '0.9rem',
+            marginBottom: -2,
+            transition: 'all .15s',
+          }}
+        >
+          {t.label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
-export default function App() {
-  const [step, setStep]               = useState<Step>('init');
-  const [sessionToken, setSessionToken] = useState('');
-  const [loading, setLoading]         = useState(false);
-  const [flipped, setFlipped]         = useState(false);
-  const [response, setResponse]       = useState<{ label: string; data: unknown } | null>(null);
+// ─── Classic Console Tab ───────────────────────────────────────────────────────
+
+function ConsoleTab({
+  sessionToken, loading, onGetSession, onReset,
+}: {
+  sessionToken: string;
+  loading: boolean;
+  onGetSession: () => void;
+  onReset: () => void;
+}) {
+  const [response, setResponse] = useState<{ label: string; data: unknown } | null>(null);
+  const [queryEmail, setQueryEmail] = useState('');
+  const [queryDoc, setQueryDoc] = useState('');
+  const [paymentSystems, setPaymentSystems] = useState<unknown[]>([]);
   const [savedTokens, setSavedTokens] = useState<SavedToken[]>([]);
-  const [paymentSystems, setPaymentSystems] = useState<any[]>([]);
-
-  const [form, setForm] = useState<CardForm>({
-    cardNumber:        '',
-    expiry:            '',
-    cvv:               '',
-    cardHolderName:    '',
-    email:             '',
-    docType:           'CC',
-    docNumber:         '',
-    mobileCountryCode: '57',
-    mobileNumber:      '',
-    amount:            '',
-    currency:          'COP',
-  });
-
-  const brand = detectBrand(form.cardNumber);
-
-  function setField(field: keyof CardForm, value: string) {
-    setForm(prev => ({ ...prev, [field]: value }));
-  }
+  const [innerLoading, setInnerLoading] = useState(false);
 
   async function run(label: string, fn: () => Promise<unknown>) {
-    setLoading(true);
+    setInnerLoading(true);
     setResponse(null);
     try {
       const data = await fn();
       setResponse({ label, data });
-      return data as any;
-    } catch (err: any) {
-      setResponse({ label, data: { error: err?.response?.data?.error ?? err.message } });
+      return data as Record<string, unknown>;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setResponse({ label, data: { error: msg } });
+    } finally {
+      setInnerLoading(false);
+    }
+  }
+
+  async function handleQueryTokens() {
+    const data = await run('queryToken', () =>
+      callProxy('queryToken', {
+        SessionToken: sessionToken,
+        TokenInfoArray: [
+          { AttributeCode: 6, AttributeDesc: 'Usermail', AttributeValue: queryEmail },
+          { AttributeCode: 19, AttributeDesc: 'CardHolderId', AttributeValue: queryDoc },
+        ],
+      })
+    );
+    if ((data as Record<string, unknown>)?.TokenArray) {
+      const tokens: SavedToken[] = ((data as Record<string, unknown>).TokenArray as unknown[]).map((t) => {
+        const attrs = (t as Record<string, unknown>).TokenInfoArray ?? [] as unknown[];
+        const find = (code: number) =>
+          (attrs as Array<Record<string, unknown>>).find((a) => a.AttributeCode === code)?.AttributeValue ?? '';
+        return { tokenId: find(1) as string, maskedCard: (find(12) || find(11)) as string, brand: find(9) as string };
+      });
+      setSavedTokens(tokens);
+    }
+  }
+
+  async function handleGetPaymentSystems() {
+    const data = await run('getPaymentSystem', () =>
+      callProxy('getPaymentSystem', { SessionToken: sessionToken })
+    );
+    if ((data as Record<string, unknown>)?.PaymentSystemArray) {
+      setPaymentSystems((data as Record<string, unknown>).PaymentSystemArray as unknown[]);
+    }
+  }
+
+  if (!sessionToken) {
+    return (
+      <div className="step-card center">
+        <h2>Bienvenido al SDK Test Console</h2>
+        <p className="subtitle">Prueba tokenización, consulta de métodos de pago y más en tiempo real contra la API de ecollect.</p>
+        <button className="btn-primary btn-large" onClick={onGetSession} disabled={loading}>
+          {loading ? <span className="spinner" /> : '🔐 Iniciar sesión con ecollect'}
+        </button>
+        <p className="hint">Autenticará usando las credenciales configuradas en el servidor</p>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <div className="form-card">
+        <h3>Operaciones de la sesión</h3>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <div className="field">
+            <label>Email para consulta</label>
+            <input type="email" placeholder="user@example.com" value={queryEmail} onChange={(e) => setQueryEmail(e.target.value)} />
+          </div>
+          <div className="field">
+            <label>Documento para consulta</label>
+            <input type="text" placeholder="123456789" value={queryDoc} onChange={(e) => setQueryDoc(e.target.value)} />
+          </div>
+        </div>
+        <div className="action-grid" style={{ marginTop: 16 }}>
+          <button className="btn-secondary" onClick={handleQueryTokens} disabled={innerLoading || !queryEmail}>
+            🔍 Ver tokens
+          </button>
+          <button className="btn-secondary" onClick={handleGetPaymentSystems} disabled={innerLoading}>
+            🏦 Métodos de pago
+          </button>
+          <button className="btn-ghost" onClick={onReset} disabled={innerLoading}>
+            🔄 Nueva sesión
+          </button>
+        </div>
+      </div>
+
+      {paymentSystems.length > 0 && (
+        <div className="methods-grid">
+          <h4>Métodos disponibles</h4>
+          {paymentSystems.map((ps, i) => (
+            <div key={i} className="method-item">
+              <span className="method-code">{(ps as Record<string, unknown>).PaymentSystem as string}</span>
+              <span>{((ps as Record<string, unknown>).FiArray as Array<Record<string, unknown>>)?.[0]?.FiName ?? `Sistema ${(ps as Record<string, unknown>).PaymentSystem}`}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {savedTokens.length > 0 && (
+        <div className="tokens-list">
+          <h4>Tokens guardados</h4>
+          {savedTokens.map((t, i) => (
+            <div key={i} className="token-item">
+              <span className="token-mask">{t.maskedCard || 'XXXX-XXXX'}</span>
+              <span className="token-id">{t.tokenId.substring(0, 30)}…</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {response && <ResponsePanel data={response.data} label={response.label} />}
+    </div>
+  );
+}
+
+// ─── Template Tab Wrapper ─────────────────────────────────────────────────────
+
+function TemplateTab({
+  sessionToken, loading, onGetSession, onReset, theme,
+}: {
+  sessionToken: string;
+  loading: boolean;
+  onGetSession: () => void;
+  onReset: () => void;
+  theme: 'minimal' | 'full' | 'dark';
+}) {
+  const [tokenized, setTokenized] = useState(false);
+  const [result, setResult] = useState<{ data: unknown; label: string } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSubmit({ cardFormData }: CardFormSubmitPayload) {
+    if (!sessionToken) throw new Error('No hay sesión activa. Inicia sesión primero.');
+
+    const resp = await callProxy('tokenCommand', {
+      SessionToken: sessionToken,
+      Command: 'SAVE',
+      TokenInfoArray: [
+        { AttributeCode: 0,  AttributeDesc: 'CardNumber',        AttributeValue: cardFormData.cardNumber },
+        { AttributeCode: 2,  AttributeDesc: 'PaymentSystem',     AttributeValue: cardFormData.paymentSystem },
+        { AttributeCode: 4,  AttributeDesc: 'ExpirationDate',    AttributeValue: cardFormData.expirationDate },
+        { AttributeCode: 6,  AttributeDesc: 'Usermail',          AttributeValue: cardFormData.email ?? '' },
+        { AttributeCode: 7,  AttributeDesc: 'MobileCountryCode', AttributeValue: cardFormData.mobileCountryCode ?? '' },
+        { AttributeCode: 8,  AttributeDesc: 'MobileNumber',      AttributeValue: cardFormData.mobileNumber ?? '' },
+        { AttributeCode: 17, AttributeDesc: 'CardHolderName',    AttributeValue: cardFormData.cardHolderName },
+        { AttributeCode: 18, AttributeDesc: 'CardHolderIdType',  AttributeValue: cardFormData.cardHolderIdType ?? '' },
+        { AttributeCode: 19, AttributeDesc: 'CardHolderId',      AttributeValue: cardFormData.cardHolderId ?? '' },
+        { AttributeCode: 22, AttributeDesc: 'AccountType',       AttributeValue: '0' },
+      ],
+    });
+
+    if (resp.ReturnCode !== 'SUCCESS') {
+      throw new Error(resp.ReturnDesc ?? `ReturnCode: ${resp.ReturnCode}`);
+    }
+
+    setResult({ data: resp, label: 'tokenCommand — SAVE' });
+    setTokenized(true);
+  }
+
+  function handleError(err: SubmitError) {
+    setError(err.message);
+  }
+
+  if (!sessionToken) {
+    return (
+      <div className="step-card center">
+        <h2>Sesión requerida</h2>
+        <p className="subtitle">Inicia sesión con ecollect para usar los templates de formulario.</p>
+        <button className="btn-primary btn-large" onClick={onGetSession} disabled={loading}>
+          {loading ? <span className="spinner" /> : '🔐 Iniciar sesión'}
+        </button>
+      </div>
+    );
+  }
+
+  const commonConfig = {
+    language: 'es' as const,
+    fields: {
+      cardHolderName: { show: true, required: false },
+      email: { show: true, required: false },
+      cardHolderIdType: { show: true, required: false, label: 'Tipo de documento' },
+      cardHolderId: { show: true, required: false, label: 'Número de documento' },
+      mobileNumber: { show: true, required: false },
+    },
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+        <button className="btn-ghost" onClick={onReset} style={{ fontSize: '0.85rem' }}>
+          🔄 Nueva sesión
+        </button>
+      </div>
+
+      {error && (
+        <div style={{ background: '#fef2f2', border: '1.5px solid #fca5a5', borderRadius: 10, padding: '12px 16px', color: '#991b1b', fontSize: '0.9rem' }}>
+          ⚠️ {error}
+          <button onClick={() => setError(null)} style={{ marginLeft: 12, background: 'none', border: 'none', cursor: 'pointer', color: '#991b1b' }}>✕</button>
+        </div>
+      )}
+
+      <div className="form-card" style={{ padding: theme === 'dark' ? 0 : undefined, overflow: 'hidden' }}>
+        {theme === 'minimal' && (
+          <div style={{ padding: 28 }}>
+            <h3 style={{ marginBottom: 20, color: '#374151' }}>Template Minimal</h3>
+            <CardFormMinimal onSubmit={handleSubmit} onError={handleError} config={commonConfig} />
+          </div>
+        )}
+        {theme === 'full' && (
+          <div style={{ padding: 28 }}>
+            <h3 style={{ marginBottom: 20, color: '#374151' }}>Template Full + Preview 3D</h3>
+            <CardFormFull onSubmit={handleSubmit} onError={handleError} config={commonConfig} />
+          </div>
+        )}
+        {theme === 'dark' && (
+          <CardFormDark onSubmit={handleSubmit} onError={handleError} config={{ ...commonConfig, showCardPreview: true }} />
+        )}
+      </div>
+
+      {result && <ResponsePanel data={result.data} label={result.label} />}
+    </div>
+  );
+}
+
+// ─── Main App ─────────────────────────────────────────────────────────────────
+
+export default function App() {
+  const [activeTab, setActiveTab] = useState<AppTab>('console');
+  const [sessionToken, setSessionToken] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [tokenized, setTokenized] = useState(false);
+
+  async function handleGetSession() {
+    setLoading(true);
+    try {
+      const data = await callProxy('getSessionToken');
+      if (data?.ReturnCode === 'SUCCESS' && data?.SessionToken) {
+        setSessionToken(data.SessionToken);
+      }
+    } catch {
+      // Error shown inline in each tab
     } finally {
       setLoading(false);
     }
   }
 
-  // ① Get Session Token
-  async function handleGetSession() {
-    const data = await run('getSessionToken', () => callProxy('getSessionToken'));
-    if (data?.ReturnCode === 'SUCCESS' && data?.SessionToken) {
-      setSessionToken(data.SessionToken);
-      setStep('form');
-    }
+  function handleReset() {
+    setSessionToken('');
+    setTokenized(false);
   }
-
-  // ② Save Token
-  async function handleSaveToken() {
-    if (!sessionToken) return;
-    const raw = form.cardNumber.replace(/\s/g, '');
-    const data = await run('tokenCommand — SAVE', () =>
-      callProxy('tokenCommand', {
-        SessionToken: sessionToken,
-        Command: 'SAVE',
-        TokenInfoArray: [
-          { AttributeCode: 0,  AttributeDesc: 'CardNumber',         AttributeValue: raw },
-          { AttributeCode: 2,  AttributeDesc: 'PaymentSystem',      AttributeValue: paymentSystemFromBrand(brand.name) },
-          { AttributeCode: 4,  AttributeDesc: 'ExpirationDate',     AttributeValue: expiryToApiFormat(form.expiry) },
-          { AttributeCode: 6,  AttributeDesc: 'Usermail',           AttributeValue: form.email },
-          { AttributeCode: 7,  AttributeDesc: 'MobileCountryCode',  AttributeValue: form.mobileCountryCode },
-          { AttributeCode: 8,  AttributeDesc: 'MobileNumber',       AttributeValue: form.mobileNumber },
-          { AttributeCode: 17, AttributeDesc: 'CardHolderName',     AttributeValue: form.cardHolderName },
-          { AttributeCode: 18, AttributeDesc: 'CardHolderIdType',   AttributeValue: form.docType },
-          { AttributeCode: 19, AttributeDesc: 'CardHolderId',       AttributeValue: form.docNumber },
-          { AttributeCode: 22, AttributeDesc: 'AccountType',        AttributeValue: '0' },
-        ],
-      })
-    );
-    if (data?.ReturnCode === 'SUCCESS') {
-      setStep('done');
-    }
-  }
-
-  // ③ Query Tokens
-  async function handleQueryTokens() {
-    if (!sessionToken) return;
-    const data = await run('queryToken', () =>
-      callProxy('queryToken', {
-        SessionToken: sessionToken,
-        TokenInfoArray: [
-          { AttributeCode: 6,  AttributeDesc: 'Usermail',      AttributeValue: form.email },
-          { AttributeCode: 19, AttributeDesc: 'CardHolderId',  AttributeValue: form.docNumber },
-        ],
-      })
-    );
-    if (data?.TokenArray) {
-      const tokens: SavedToken[] = (data.TokenArray as any[]).map((t: any) => {
-        const attrs = t.TokenInfoArray ?? [];
-        const find = (code: number) => attrs.find((a: any) => a.AttributeCode === code)?.AttributeValue ?? '';
-        return {
-          tokenId:    find(1),
-          maskedCard: find(12) || find(11),
-          brand:      find(9),
-          expiry:     find(4),
-        };
-      });
-      setSavedTokens(tokens);
-      setStep('tokens');
-    }
-  }
-
-  // ④ Get Payment Systems
-  async function handleGetPaymentSystems() {
-    if (!sessionToken) return;
-    const data = await run('getPaymentSystem', () =>
-      callProxy('getPaymentSystem', { SessionToken: sessionToken })
-    );
-    if (data?.PaymentSystemArray) {
-      setPaymentSystems(data.PaymentSystemArray);
-      setStep('methods');
-    }
-  }
-
-  const canSubmit = form.cardNumber.replace(/\s/g, '').length >= 15
-    && form.expiry.length >= 4
-    && form.cvv.length >= 3
-    && form.cardHolderName.trim().length > 2
-    && form.email.includes('@')
-    && form.docNumber.length > 3;
 
   return (
     <div className="app">
@@ -280,248 +357,47 @@ export default function App() {
             <span className="logo-icon">⚡</span>
             <span>ecollect <strong>SDK Console</strong></span>
           </div>
-          <StatusBadge step={step} sessionActive={!!sessionToken} />
+          <StatusBadge sessionActive={!!sessionToken} tokenized={tokenized} />
         </div>
       </header>
 
       <main className="app-main">
-        {/* ── STEP 1: Init ── */}
-        {step === 'init' && (
-          <div className="step-card center">
-            <h2>Bienvenido al SDK Test Console</h2>
-            <p className="subtitle">Prueba tokenización, consulta de métodos de pago y más en tiempo real contra la API de ecollect.</p>
-            <button className="btn-primary btn-large" onClick={handleGetSession} disabled={loading}>
-              {loading ? <span className="spinner" /> : '🔐 Iniciar sesión con ecollect'}
-            </button>
-            <p className="hint">Autenticará usando las credenciales configuradas en el servidor</p>
-          </div>
+        <TabBar active={activeTab} onChange={setActiveTab} />
+
+        {activeTab === 'console' && (
+          <ConsoleTab
+            sessionToken={sessionToken}
+            loading={loading}
+            onGetSession={handleGetSession}
+            onReset={handleReset}
+          />
         )}
-
-        {/* ── STEPS 2+: Form + Card preview ── */}
-        {step !== 'init' && (
-          <div className="form-layout">
-
-            {/* Left: Card preview */}
-            <div className="card-column">
-              <CardPreview form={form} flipped={flipped} />
-
-              {/* Payment Systems */}
-              {paymentSystems.length > 0 && (
-                <div className="methods-grid">
-                  <h4>Métodos disponibles</h4>
-                  {paymentSystems.map((ps: any, i) => (
-                    <div key={i} className="method-item">
-                      <span className="method-code">{ps.PaymentSystem}</span>
-                      <span>{ps.FiArray?.[0]?.FiName ?? `Sistema ${ps.PaymentSystem}`}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Saved Tokens */}
-              {savedTokens.length > 0 && (
-                <div className="tokens-list">
-                  <h4>Tokens guardados</h4>
-                  {savedTokens.map((t, i) => (
-                    <div key={i} className="token-item">
-                      <span className="token-mask">{t.maskedCard || 'XXXX-XXXX'}</span>
-                      <span className="token-id">{t.tokenId.substring(0, 20)}…</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Right: Form */}
-            <div className="form-column">
-              <div className="form-card">
-                <h3>Datos de la tarjeta</h3>
-
-                {/* Card Number */}
-                <div className="field">
-                  <label>Número de tarjeta</label>
-                  <div className="input-with-badge">
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      placeholder="1234 5678 9012 3456"
-                      maxLength={19}
-                      value={form.cardNumber}
-                      onChange={e => setField('cardNumber', formatCardNumber(e.target.value))}
-                      onFocus={() => setFlipped(false)}
-                    />
-                    {brand.name && <span className="brand-badge" style={{ background: brand.color }}>{brand.name}</span>}
-                  </div>
-                </div>
-
-                {/* Expiry + CVV */}
-                <div className="field-row">
-                  <div className="field">
-                    <label>Vencimiento</label>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      placeholder="MM/AA"
-                      maxLength={5}
-                      value={form.expiry}
-                      onChange={e => setField('expiry', formatExpiry(e.target.value))}
-                      onFocus={() => setFlipped(false)}
-                    />
-                  </div>
-                  <div className="field">
-                    <label>CVV</label>
-                    <input
-                      type="password"
-                      inputMode="numeric"
-                      placeholder="•••"
-                      maxLength={4}
-                      value={form.cvv}
-                      onChange={e => setField('cvv', e.target.value.replace(/\D/g, ''))}
-                      onFocus={() => setFlipped(true)}
-                      onBlur={() => setFlipped(false)}
-                    />
-                  </div>
-                </div>
-
-                {/* Cardholder */}
-                <div className="field">
-                  <label>Nombre del titular</label>
-                  <input
-                    type="text"
-                    placeholder="Como aparece en la tarjeta"
-                    value={form.cardHolderName}
-                    onChange={e => setField('cardHolderName', e.target.value.toUpperCase())}
-                    onFocus={() => setFlipped(false)}
-                  />
-                </div>
-
-                <div className="divider"><span>Datos del titular</span></div>
-
-                {/* Email */}
-                <div className="field">
-                  <label>Correo electrónico</label>
-                  <input
-                    type="email"
-                    placeholder="correo@ejemplo.com"
-                    value={form.email}
-                    onChange={e => setField('email', e.target.value)}
-                  />
-                </div>
-
-                {/* Document */}
-                <div className="field-row">
-                  <div className="field field-narrow">
-                    <label>Tipo doc.</label>
-                    <select value={form.docType} onChange={e => setField('docType', e.target.value)}>
-                      <option value="CC">CC</option>
-                      <option value="NIT">NIT</option>
-                      <option value="CE">CE</option>
-                      <option value="CURP">CURP</option>
-                      <option value="RFC">RFC</option>
-                      <option value="CI">CI</option>
-                      <option value="RNC">RNC</option>
-                    </select>
-                  </div>
-                  <div className="field">
-                    <label>Número de documento</label>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      placeholder="123456789"
-                      value={form.docNumber}
-                      onChange={e => setField('docNumber', e.target.value.replace(/\D/g, ''))}
-                    />
-                  </div>
-                </div>
-
-                {/* Phone */}
-                <div className="field-row">
-                  <div className="field field-narrow">
-                    <label>País</label>
-                    <select value={form.mobileCountryCode} onChange={e => setField('mobileCountryCode', e.target.value)}>
-                      <option value="57">🇨🇴 +57</option>
-                      <option value="52">🇲🇽 +52</option>
-                      <option value="1">🇩🇴 +1</option>
-                      <option value="1">🇺🇸 +1</option>
-                    </select>
-                  </div>
-                  <div className="field">
-                    <label>Teléfono móvil</label>
-                    <input
-                      type="text"
-                      inputMode="tel"
-                      placeholder="311 123 4567"
-                      value={form.mobileNumber}
-                      onChange={e => setField('mobileNumber', e.target.value.replace(/\D/g, ''))}
-                    />
-                  </div>
-                </div>
-
-                <div className="divider"><span>Monto (opcional)</span></div>
-
-                {/* Amount */}
-                <div className="field-row">
-                  <div className="field">
-                    <label>Monto</label>
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      placeholder="50000"
-                      value={form.amount}
-                      onChange={e => setField('amount', e.target.value.replace(/[^\d.]/g, ''))}
-                    />
-                  </div>
-                  <div className="field field-narrow">
-                    <label>Moneda</label>
-                    <select value={form.currency} onChange={e => setField('currency', e.target.value)}>
-                      <option value="COP">COP</option>
-                      <option value="MXN">MXN</option>
-                      <option value="USD">USD</option>
-                      <option value="DOP">DOP</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* Actions */}
-                <div className="action-grid">
-                  <button
-                    className="btn-primary"
-                    onClick={handleSaveToken}
-                    disabled={loading || !canSubmit}
-                    title="Tokenizar tarjeta con tokenCommand SAVE"
-                  >
-                    {loading ? <span className="spinner" /> : '💾 Tokenizar tarjeta'}
-                  </button>
-                  <button
-                    className="btn-secondary"
-                    onClick={handleQueryTokens}
-                    disabled={loading || !form.email || !form.docNumber}
-                    title="Consultar tokens guardados con queryToken"
-                  >
-                    🔍 Ver tokens
-                  </button>
-                  <button
-                    className="btn-secondary"
-                    onClick={handleGetPaymentSystems}
-                    disabled={loading}
-                    title="Listar métodos de pago con getPaymentSystem"
-                  >
-                    🏦 Métodos de pago
-                  </button>
-                  <button
-                    className="btn-ghost"
-                    onClick={() => { setStep('init'); setSessionToken(''); setResponse(null); setSavedTokens([]); setPaymentSystems([]); }}
-                    disabled={loading}
-                  >
-                    🔄 Nueva sesión
-                  </button>
-                </div>
-              </div>
-
-              {/* Response */}
-              {response && <ResponsePanel data={response.data} label={response.label} />}
-            </div>
-          </div>
+        {activeTab === 'minimal' && (
+          <TemplateTab
+            sessionToken={sessionToken}
+            loading={loading}
+            onGetSession={handleGetSession}
+            onReset={handleReset}
+            theme="minimal"
+          />
+        )}
+        {activeTab === 'full' && (
+          <TemplateTab
+            sessionToken={sessionToken}
+            loading={loading}
+            onGetSession={handleGetSession}
+            onReset={handleReset}
+            theme="full"
+          />
+        )}
+        {activeTab === 'dark' && (
+          <TemplateTab
+            sessionToken={sessionToken}
+            loading={loading}
+            onGetSession={handleGetSession}
+            onReset={handleReset}
+            theme="dark"
+          />
         )}
       </main>
     </div>

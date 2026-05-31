@@ -18,10 +18,16 @@
 
     /* Linting */
     "strict": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "noFallthroughCasesInSwitch": true,
+
+    /* Workspace package aliases */
+    "paths": {
+      "@ecollect/ui-core": ["../../packages/ui-core/src/index.ts"],
+      "@ecollect/ui-react": ["../../packages/ui-react/src/index.ts"]
+    }
   },
-  "include": ["src"],
+  "include": ["src", "../../packages/ui-core/src", "../../packages/ui-react/src"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

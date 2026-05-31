@@ -1,9 +1,18 @@
 {
   "name": "ecollect-sdk-monorepo",
   "private": true,
-  "workspaces": ["packages/typescript"],
+  "workspaces": [
+    "packages/typescript",
+    "packages/ui-core",
+    "packages/ui-react",
+    "packages/ui-vue",
+    "packages/ui-angular",
+    "packages/ui-html"
+  ],
   "scripts": {
     "test:typescript": "npm test --workspace=packages/typescript",
-    "build:typescript": "npm run build --workspace=packages/typescript"
+    "build:typescript": "npm run build --workspace=packages/typescript",
+    "build:ui-core": "npm run build --workspace=packages/ui-core",
+    "test:ui-core": "npm test --workspace=packages/ui-core"
   }
 }

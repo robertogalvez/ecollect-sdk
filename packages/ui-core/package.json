@@ -1,0 +1,26 @@
+{
+  "name": "@ecollect/ui-core",
+  "version": "0.1.0",
+  "description": "Core logic for ecollect card form UI — validators, formatters, brand detection, i18n, security",
+  "type": "module",
+  "main": "dist/index.cjs",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "sideEffects": false,
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc --project tsconfig.build.json && node scripts/build-cjs.mjs",
+    "dev": "tsc --project tsconfig.build.json --watch",
+    "test": "node --experimental-vm-modules ../../node_modules/.bin/jest"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  }
+}
