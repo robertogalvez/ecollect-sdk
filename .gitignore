@@ -14,5 +14,4 @@ packages/php/phpunit.xml.bak
 packages/python/.coverage
 packages/python/coverage.xml
 
-# Root package-lock (not part of any package)
-package-lock.json
+# (root package-lock.json is intentionally committed for workspace ci)

@@ -4,6 +4,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         node-version: [18.x, 20.x]
     steps:
@@ -12,11 +13,5 @@ jobs:
         with: { node-version: '${{ matrix.node-version }}' }
       - run: node --version && npm --version
       - run: npm ci
-        working-directory: packages/typescript
-      - run: npm test -- --verbose 2>&1 || true
-        working-directory: packages/typescript
-        id: test_run
-      - run: npm test
-        working-directory: packages/typescript
-      - run: npm run build
-        working-directory: packages/typescript
+      - run: npm test --workspace=packages/typescript
+      - run: npm run build --workspace=packages/typescript
