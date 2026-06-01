@@ -399,6 +399,29 @@ function ConsoleTab({ sessionToken, loading, onGetSession, onReset }: {
 
 // ─── Template Tab ─────────────────────────────────────────────────────────────
 
+type PaymentMode = 'tokenize' | 'charge' | 'tokenize-and-charge';
+
+const PAYMENT_MODES: { value: PaymentMode; label: string; desc: string }[] = [
+  { value: 'tokenize',            label: '💾 Solo tokenizar',          desc: 'tokenCommand SAVE → obtiene TokenId' },
+  { value: 'charge',              label: '💳 Cobro directo',           desc: 'createTransactionPayment con datos de tarjeta' },
+  { value: 'tokenize-and-charge', label: '💾💳 Tokenizar + cobrar',    desc: 'tokenCommand SAVE → createTransactionPayment con TokenId' },
+];
+
+function buildTokenInfoArray(cardFormData: CardFormSubmitPayload['cardFormData']) {
+  return [
+    { AttributeCode: 0,  AttributeDesc: 'CardNumber',        AttributeValue: cardFormData.cardNumber },
+    { AttributeCode: 2,  AttributeDesc: 'PaymentSystem',     AttributeValue: cardFormData.paymentSystem },
+    { AttributeCode: 4,  AttributeDesc: 'ExpirationDate',    AttributeValue: cardFormData.expirationDate },
+    { AttributeCode: 6,  AttributeDesc: 'Usermail',          AttributeValue: cardFormData.email ?? '' },
+    { AttributeCode: 7,  AttributeDesc: 'MobileCountryCode', AttributeValue: cardFormData.mobileCountryCode ?? '' },
+    { AttributeCode: 8,  AttributeDesc: 'MobileNumber',      AttributeValue: cardFormData.mobileNumber ?? '' },
+    { AttributeCode: 17, AttributeDesc: 'CardHolderName',    AttributeValue: cardFormData.cardHolderName },
+    { AttributeCode: 18, AttributeDesc: 'CardHolderIdType',  AttributeValue: cardFormData.cardHolderIdType ?? '' },
+    { AttributeCode: 19, AttributeDesc: 'CardHolderId',      AttributeValue: cardFormData.cardHolderId ?? '' },
+    { AttributeCode: 22, AttributeDesc: 'AccountType',       AttributeValue: '0' },
+  ].filter((a) => a.AttributeValue !== '');
+}
+
 function TemplateTab({ sessionToken, loading, onGetSession, onReset, theme }: {
   sessionToken: string; loading: boolean;
   onGetSession: () => void; onReset: () => void;
@@ -407,7 +430,9 @@ function TemplateTab({ sessionToken, loading, onGetSession, onReset, theme }: {
   const [tramas, setTramas] = useState<TramaRecord[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [tokenized, setTokenized] = useState(false);
+  const [charged, setCharged] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [paymentMode, setPaymentMode] = useState<PaymentMode>('tokenize');
 
   function addTrama(t: TramaRecord) {
     setTramas((prev) => [t, ...prev]);
@@ -418,30 +443,52 @@ function TemplateTab({ sessionToken, loading, onGetSession, onReset, theme }: {
     if (!sessionToken) throw new Error('No hay sesión activa.');
     setError(null);
 
-    const tokenInfoArray = [
-      { AttributeCode: 0,  AttributeDesc: 'CardNumber',        AttributeValue: cardFormData.cardNumber },
-      { AttributeCode: 2,  AttributeDesc: 'PaymentSystem',     AttributeValue: cardFormData.paymentSystem },
-      { AttributeCode: 4,  AttributeDesc: 'ExpirationDate',    AttributeValue: cardFormData.expirationDate },
-      { AttributeCode: 6,  AttributeDesc: 'Usermail',          AttributeValue: cardFormData.email ?? '' },
-      { AttributeCode: 7,  AttributeDesc: 'MobileCountryCode', AttributeValue: cardFormData.mobileCountryCode ?? '' },
-      { AttributeCode: 8,  AttributeDesc: 'MobileNumber',      AttributeValue: cardFormData.mobileNumber ?? '' },
-      { AttributeCode: 17, AttributeDesc: 'CardHolderName',    AttributeValue: cardFormData.cardHolderName },
-      { AttributeCode: 18, AttributeDesc: 'CardHolderIdType',  AttributeValue: cardFormData.cardHolderIdType ?? '' },
-      { AttributeCode: 19, AttributeDesc: 'CardHolderId',      AttributeValue: cardFormData.cardHolderId ?? '' },
-      { AttributeCode: 22, AttributeDesc: 'AccountType',       AttributeValue: '0' },
-    ].filter((a) => a.AttributeValue !== '');
-
     try {
-      const resp = await callProxy('tokenCommand', {
-        SessionToken: sessionToken,
-        Command: 'SAVE',
-        TokenInfoArray: tokenInfoArray,
-      }, addTrama);
+      if (paymentMode === 'tokenize' || paymentMode === 'tokenize-and-charge') {
+        const tokenInfoArray = buildTokenInfoArray(cardFormData);
+        const tokenResp = await callProxy('tokenCommand', {
+          SessionToken: sessionToken,
+          Command: 'SAVE',
+          TokenInfoArray: tokenInfoArray,
+        }, addTrama);
 
-      if (resp.ReturnCode !== 'SUCCESS') {
-        throw new Error(resp.ReturnDesc as string ?? `ReturnCode: ${resp.ReturnCode}`);
+        if (tokenResp.ReturnCode !== 'SUCCESS') {
+          throw new Error(String(tokenResp.ReturnDesc ?? `ReturnCode: ${tokenResp.ReturnCode}`));
+        }
+        setTokenized(true);
+
+        if (paymentMode === 'tokenize-and-charge') {
+          const tokenId = tokenResp.TokenId as string;
+          const chargeResp = await callProxy('createTransactionPayment', {
+            SessionToken: sessionToken,
+            TokenId: tokenId,
+            PaymentSystem: cardFormData.paymentSystem,
+          }, addTrama);
+
+          if (chargeResp.ReturnCode !== 'SUCCESS') {
+            throw new Error(String(chargeResp.ReturnDesc ?? `ReturnCode: ${chargeResp.ReturnCode}`));
+          }
+          setCharged(true);
+        }
+      } else {
+        // charge: direct payment without tokenizing
+        const chargeResp = await callProxy('createTransactionPayment', {
+          SessionToken: sessionToken,
+          CardNumber: cardFormData.cardNumber,
+          ExpirationDate: cardFormData.expirationDate,
+          SecurityCode: cardFormData.secureCode,
+          CardHolderName: cardFormData.cardHolderName,
+          PaymentSystem: cardFormData.paymentSystem,
+          Email: cardFormData.email ?? undefined,
+          CardHolderIdType: cardFormData.cardHolderIdType ?? undefined,
+          CardHolderId: cardFormData.cardHolderId ?? undefined,
+        }, addTrama);
+
+        if (chargeResp.ReturnCode !== 'SUCCESS') {
+          throw new Error(String(chargeResp.ReturnDesc ?? `ReturnCode: ${chargeResp.ReturnCode}`));
+        }
+        setCharged(true);
       }
-      setTokenized(true);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setError(msg);
@@ -477,9 +524,37 @@ function TemplateTab({ sessionToken, loading, onGetSession, onReset, theme }: {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {/* Payment flow selector */}
+      <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '14px 18px' }}>
+        <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#64748b', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          Flujo de pago
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {PAYMENT_MODES.map((m) => (
+            <button
+              key={m.value}
+              onClick={() => { setPaymentMode(m.value); setTokenized(false); setCharged(false); setError(null); setTramas([]); }}
+              style={{
+                padding: '6px 14px', borderRadius: 8, fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer',
+                border: paymentMode === m.value ? '2px solid #6366f1' : '2px solid #e2e8f0',
+                background: paymentMode === m.value ? '#eef2ff' : '#fff',
+                color: paymentMode === m.value ? '#4338ca' : '#64748b',
+              }}
+              title={m.desc}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+        <div style={{ fontSize: '0.78rem', color: '#94a3b8', marginTop: 8 }}>
+          {PAYMENT_MODES.find((m) => m.value === paymentMode)?.desc}
+        </div>
+      </div>
+
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div style={{ fontSize: '0.82rem', color: '#64748b', fontFamily: 'monospace' }}>
+        <div style={{ fontSize: '0.82rem', color: '#64748b', fontFamily: 'monospace', display: 'flex', gap: 12 }}>
           {tokenized && <span style={{ color: '#10b981', fontWeight: 700 }}>✅ Tokenización exitosa</span>}
+          {charged && <span style={{ color: '#6366f1', fontWeight: 700 }}>💳 Cobro aprobado</span>}
         </div>
         <button className="btn-ghost" onClick={onReset} style={{ fontSize: '0.85rem' }}>🔄 Nueva sesión</button>
       </div>
