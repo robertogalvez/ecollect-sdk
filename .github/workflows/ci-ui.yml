@@ -1,0 +1,17 @@
+name: UI Packages CI
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '${{ matrix.node-version }}' }
+      - run: npm install
+      - name: Test ui-core
+        run: npm test --workspace=packages/ui-core
+      - name: Test ui-react
+        run: npm test --workspace=packages/ui-react
