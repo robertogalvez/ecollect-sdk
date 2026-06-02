@@ -5,3 +5,5 @@ coverage/
 *.d.ts.map
 .env
 .env.local
+.claude/
+packages/php/.phpunit.result.cache
