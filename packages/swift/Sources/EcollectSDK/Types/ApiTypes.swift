@@ -98,20 +98,20 @@ struct CreateTransactionRequest: Encodable {
     let ChannelInfoArray: [ChannelInfoType]?
 }
 
-struct SubserviceType: Codable {
-    let EntityCode: Int
-    let SrvCode: String
-    let ValueType: Int
-    let TransValue: Decimal
-    let TransVatValue: Decimal?
+public struct SubserviceType: Codable {
+    public let EntityCode: Int
+    public let SrvCode: String
+    public let ValueType: Int
+    public let TransValue: Decimal
+    public let TransVatValue: Decimal?
 }
 
-struct CreateTransactionResponse: Decodable {
-    let ReturnCode: String
-    let TicketId: Int?
-    let eCollectUrl: String?
-    let LifetimeSecs: Int?
-    let TransactionResponse: TransactionInfoResponse?
+public struct CreateTransactionResponse: Decodable {
+    public let ReturnCode: String
+    public let TicketId: Int?
+    public let eCollectUrl: String?
+    public let LifetimeSecs: Int?
+    public let TransactionResponse: TransactionInfoResponse?
 }
 
 // MARK: - getTransactionInformation
