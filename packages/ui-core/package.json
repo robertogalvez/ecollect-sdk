@@ -18,9 +18,10 @@
   "scripts": {
     "build": "tsc --project tsconfig.build.json && node scripts/build-cjs.mjs",
     "dev": "tsc --project tsconfig.build.json --watch",
-    "test": "node --experimental-vm-modules ../../node_modules/.bin/jest"
+    "test": "vitest run"
   },
   "devDependencies": {
-    "typescript": "^5.4.0"
+    "typescript": "^5.4.0",
+    "vitest": "^2.0.0"
   }
 }

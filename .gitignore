@@ -5,6 +5,7 @@ coverage/
 *.d.ts.map
 .env
 .env.local
+.claude/
 
 # PHP test artifacts
 packages/php/.phpunit.result.cache
