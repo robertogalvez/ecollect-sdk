@@ -6,4 +6,15 @@ coverage/
 .env
 .env.local
 .claude/
+
+# PHP test artifacts
 packages/php/.phpunit.result.cache
+packages/php/phpunit.xml.bak
+
+# Python test artifacts
+packages/python/.coverage
+packages/python/coverage.xml
+
+# (root package-lock.json is intentionally committed for workspace ci)
+# workspace subdirectory lock files must NOT be committed with npm workspaces
+packages/typescript/package-lock.json
