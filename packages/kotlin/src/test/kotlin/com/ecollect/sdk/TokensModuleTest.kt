@@ -3,34 +3,55 @@ package com.ecollect.sdk
 import com.ecollect.sdk.exceptions.*
 import com.ecollect.sdk.modules.SessionModule
 import com.ecollect.sdk.modules.TokensModule
-import com.ecollect.sdk.types.TokenCommandResponse
-import com.ecollect.sdk.types.PaymentInfoType
 import com.ecollect.sdk.utils.HttpClient
 import io.mockk.*
 import kotlinx.coroutines.test.runTest
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
+import org.junit.After
 import org.junit.Assert.*
+import org.junit.Before
 import org.junit.Test
 
 class TokensModuleTest {
+
+    private lateinit var mockWebServer: MockWebServer
+    private lateinit var httpClient: HttpClient
 
     private val testCardNumber = "4111111111111111" // Valid Luhn, VISA test card
     private val testExpiry = "12/2030"
     private val invalidCardNumber = "1234567890123456" // Fails Luhn
 
-    private fun makeModule(
-        sessionToken: String = "test-session-token"
-    ): Triple<TokensModule, SessionModule, HttpClient> {
-        val config = Config(etyCode = 123, sessionToken = sessionToken, environment = Environment.TEST)
-        val httpClient = mockk<HttpClient>()
+    @Before
+    fun setUp() {
+        mockWebServer = MockWebServer()
+        mockWebServer.start()
+        httpClient = HttpClient()
+    }
+
+    @After
+    fun tearDown() {
+        mockWebServer.shutdown()
+    }
+
+    private fun makeConfig(sessionToken: String = "test-session-token") = Config(
+        etyCode = 123,
+        sessionToken = sessionToken,
+        environment = Environment.TEST,
+        testBaseUrl = mockWebServer.url("/").toString()
+    )
+
+    private fun makeModule(sessionToken: String = "test-session-token"): TokensModule {
+        val config = makeConfig(sessionToken)
         val session = mockk<SessionModule>()
         coEvery { session.getSessionToken() } returns sessionToken
-        val module = TokensModule(config, httpClient, session)
-        return Triple(module, session, httpClient)
+        every { session.invalidate() } just Runs
+        return TokensModule(config, httpClient, session)
     }
 
     @Test
     fun `save throws InvalidCardException for invalid card number`() = runTest {
-        val (module) = makeModule()
+        val module = makeModule()
         try {
             module.save(
                 cardNumber = invalidCardNumber,
@@ -52,16 +73,12 @@ class TokensModuleTest {
 
     @Test
     fun `save succeeds with valid card`() = runTest {
-        val (module, _, httpClient) = makeModule()
-        val successResponse = TokenCommandResponse(
-            returnCode = "SUCCESS",
-            tokenInfoArray = listOf(
-                PaymentInfoType(1, "TokenId", "tok_abc123"),
-                PaymentInfoType(11, "Last4", "1111"),
-                PaymentInfoType(12, "MaskedCard", "VISA ****1111")
-            )
+        mockWebServer.enqueue(
+            MockResponse()
+                .setBody("""{"ReturnCode":"SUCCESS","TokenInfoArray":[{"AttributeCode":1,"AttributeDesc":"TokenId","AttributeValue":"tok_abc123"},{"AttributeCode":12,"AttributeDesc":"MaskedCard","AttributeValue":"VISA ****1111"}]}""")
+                .setResponseCode(200)
         )
-        coEvery { httpClient.post<Any, TokenCommandResponse>(any(), any()) } returns successResponse
+        val module = makeModule()
 
         val result = module.save(
             cardNumber = testCardNumber,
@@ -83,9 +100,12 @@ class TokensModuleTest {
 
     @Test
     fun `delete sends REMOVE command`() = runTest {
-        val (module, _, httpClient) = makeModule()
-        val successResponse = TokenCommandResponse(returnCode = "SUCCESS")
-        coEvery { httpClient.post<Any, TokenCommandResponse>(any(), any()) } returns successResponse
+        mockWebServer.enqueue(
+            MockResponse()
+                .setBody("""{"ReturnCode":"SUCCESS","TokenInfoArray":[{"AttributeCode":1,"AttributeDesc":"TokenId","AttributeValue":"tok_abc123"},{"AttributeCode":12,"AttributeDesc":"MaskedCard","AttributeValue":"VISA ****1111"}]}""")
+                .setResponseCode(200)
+        )
+        val module = makeModule()
 
         val result = module.delete(
             tokenId = "tok_abc123",
@@ -98,7 +118,7 @@ class TokensModuleTest {
 
     @Test
     fun `update validates expiration date format`() = runTest {
-        val (module) = makeModule()
+        val module = makeModule()
         try {
             module.update(
                 tokenId = "tok_abc123",
@@ -115,9 +135,12 @@ class TokensModuleTest {
 
     @Test
     fun `list returns query token response`() = runTest {
-        val (module, _, httpClient) = makeModule()
-        val response = com.ecollect.sdk.types.QueryTokenResponse(returnCode = "NO_RECORDS")
-        coEvery { httpClient.post<Any, com.ecollect.sdk.types.QueryTokenResponse>(any(), any()) } returns response
+        mockWebServer.enqueue(
+            MockResponse()
+                .setBody("""{"ReturnCode":"NO_RECORDS"}""")
+                .setResponseCode(200)
+        )
+        val module = makeModule()
 
         val result = module.list("john@test.com", "12345678")
         assertEquals("NO_RECORDS", result.returnCode)
@@ -125,9 +148,12 @@ class TokensModuleTest {
 
     @Test
     fun `TokenNotFoundException thrown when returnCode is FAIL_TOKENNOTFOUND`() = runTest {
-        val (module, _, httpClient) = makeModule()
-        val errorResponse = TokenCommandResponse(returnCode = "FAIL_TOKENNOTFOUND")
-        coEvery { httpClient.post<Any, TokenCommandResponse>(any(), any()) } returns errorResponse
+        mockWebServer.enqueue(
+            MockResponse()
+                .setBody("""{"ReturnCode":"FAIL_TOKENNOTFOUND"}""")
+                .setResponseCode(200)
+        )
+        val module = makeModule()
 
         try {
             module.delete(

@@ -32,8 +32,8 @@ class ValidatorsTest {
     }
 
     @Test
-    fun `luhnCheck returns false for all zeros`() {
-        assertFalse(Validators.luhnCheck("0000000000000000"))
+    fun `luhnCheck returns false for known invalid number`() {
+        assertFalse(Validators.luhnCheck("1234567890123456"))
     }
 
     @Test

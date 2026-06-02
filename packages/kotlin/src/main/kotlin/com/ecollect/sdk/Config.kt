@@ -10,16 +10,18 @@ data class Config(
     val apiKey: String? = null,
     val sessionToken: String? = null,
     val srvCode: Int? = null,
-    val environment: Environment = Environment.TEST
+    val environment: Environment = Environment.TEST,
+    val testBaseUrl: String? = null,   // override for unit tests (MockWebServer)
 ) {
     val baseUrl: String
-        get() = when (environment) {
+        get() = testBaseUrl ?: when (environment) {
             Environment.TEST -> URLs.TEST_BASE
             Environment.PRODUCTION -> URLs.PROD_BASE
         }
 
     val transactionInfoUrl: String
-        get() = when (environment) {
+        get() = if (testBaseUrl != null) "${testBaseUrl}getTransactionInformation"
+        else when (environment) {
             Environment.TEST -> "${URLs.TEST_BASE}getTransactionInformation"
             Environment.PRODUCTION -> URLs.PROD_TRANSACTION_INFO
         }

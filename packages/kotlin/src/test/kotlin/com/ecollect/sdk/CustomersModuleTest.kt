@@ -3,38 +3,60 @@ package com.ecollect.sdk
 import com.ecollect.sdk.exceptions.*
 import com.ecollect.sdk.modules.CustomersModule
 import com.ecollect.sdk.modules.SessionModule
-import com.ecollect.sdk.types.GetCustomerIdResponse
-import com.ecollect.sdk.types.PaymentInfoType
 import com.ecollect.sdk.utils.HttpClient
 import io.mockk.*
 import kotlinx.coroutines.test.runTest
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
+import org.junit.After
 import org.junit.Assert.*
+import org.junit.Before
 import org.junit.Test
 
 class CustomersModuleTest {
 
-    private fun makeModule(sessionToken: String = "test-session"): Triple<CustomersModule, SessionModule, HttpClient> {
-        val config = Config(etyCode = 123, sessionToken = sessionToken, environment = Environment.TEST)
-        val httpClient = mockk<HttpClient>()
+    private lateinit var mockWebServer: MockWebServer
+    private lateinit var httpClient: HttpClient
+
+    @Before
+    fun setUp() {
+        mockWebServer = MockWebServer()
+        mockWebServer.start()
+        httpClient = HttpClient()
+    }
+
+    @After
+    fun tearDown() {
+        mockWebServer.shutdown()
+    }
+
+    private fun makeConfig(sessionToken: String = "test-session") = Config(
+        etyCode = 123,
+        sessionToken = sessionToken,
+        environment = Environment.TEST,
+        testBaseUrl = mockWebServer.url("/").toString()
+    )
+
+    private fun makeModule(sessionToken: String = "test-session"): CustomersModule {
+        val config = makeConfig(sessionToken)
         val session = mockk<SessionModule>()
         coEvery { session.getSessionToken() } returns sessionToken
         every { session.invalidate() } just Runs
-        coEvery { session.getSessionToken() } returns sessionToken
-        val module = CustomersModule(config, httpClient, session)
-        return Triple(module, session, httpClient)
+        return CustomersModule(config, httpClient, session)
     }
 
-    private fun successResponse(customerId: String = "cust-001") = GetCustomerIdResponse(
-        returnCode = "SUCCESS",
-        customerInfoArray = listOf(
-            PaymentInfoType(37, "CustomerId", customerId)
+    private fun enqueueSuccess(customerId: String = "cust-001") {
+        mockWebServer.enqueue(
+            MockResponse()
+                .setBody("""{"ReturnCode":"SUCCESS","CustomerInfoArray":[{"AttributeCode":37,"AttributeDesc":"CustomerId","AttributeValue":"$customerId"}]}""")
+                .setResponseCode(200)
         )
-    )
+    }
 
     @Test
     fun `getOrCreateCustomerId returns customerId for new customer`() = runTest {
-        val (module, _, httpClient) = makeModule()
-        coEvery { httpClient.post<Any, GetCustomerIdResponse>(any(), any()) } returns successResponse("cust-new-001")
+        enqueueSuccess("cust-new-001")
+        val module = makeModule()
 
         val result = module.getOrCreateCustomerId(
             usermail = "user@example.com",
@@ -49,8 +71,8 @@ class CustomersModuleTest {
 
     @Test
     fun `getOrCreateCustomerId returns same customerId for existing customer`() = runTest {
-        val (module, _, httpClient) = makeModule()
-        coEvery { httpClient.post<Any, GetCustomerIdResponse>(any(), any()) } returns successResponse("cust-existing-999")
+        enqueueSuccess("cust-existing-999")
+        val module = makeModule()
 
         val result = module.getOrCreateCustomerId(
             usermail = "user@example.com",
@@ -65,8 +87,8 @@ class CustomersModuleTest {
 
     @Test
     fun `updateCustomer returns customerId on success`() = runTest {
-        val (module, _, httpClient) = makeModule()
-        coEvery { httpClient.post<Any, GetCustomerIdResponse>(any(), any()) } returns successResponse("cust-upd-001")
+        enqueueSuccess("cust-upd-001")
+        val module = makeModule()
 
         val result = module.updateCustomer(
             customerId = "cust-upd-001",
@@ -77,11 +99,12 @@ class CustomersModuleTest {
 
     @Test
     fun `getOrCreateCustomerId throws CustomerNotFoundException when CustomerId missing in response`() = runTest {
-        val (module, _, httpClient) = makeModule()
-        coEvery { httpClient.post<Any, GetCustomerIdResponse>(any(), any()) } returns GetCustomerIdResponse(
-            returnCode = "SUCCESS",
-            customerInfoArray = emptyList()
+        mockWebServer.enqueue(
+            MockResponse()
+                .setBody("""{"ReturnCode":"SUCCESS","CustomerInfoArray":[]}""")
+                .setResponseCode(200)
         )
+        val module = makeModule()
 
         try {
             module.getOrCreateCustomerId(
@@ -100,10 +123,12 @@ class CustomersModuleTest {
 
     @Test
     fun `getOrCreateCustomerId throws ValidationException for invalid card holder ID`() = runTest {
-        val (module, _, httpClient) = makeModule()
-        coEvery { httpClient.post<Any, GetCustomerIdResponse>(any(), any()) } returns GetCustomerIdResponse(
-            returnCode = "FAIL_CARDHOLDERID"
+        mockWebServer.enqueue(
+            MockResponse()
+                .setBody("""{"ReturnCode":"FAIL_CARDHOLDERID"}""")
+                .setResponseCode(200)
         )
+        val module = makeModule()
 
         try {
             module.getOrCreateCustomerId(
@@ -122,10 +147,12 @@ class CustomersModuleTest {
 
     @Test
     fun `getOrCreateCustomerId throws AuthenticationException on FAIL_ACCESSDENIED`() = runTest {
-        val (module, _, httpClient) = makeModule()
-        coEvery { httpClient.post<Any, GetCustomerIdResponse>(any(), any()) } returns GetCustomerIdResponse(
-            returnCode = "FAIL_ACCESSDENIED"
+        mockWebServer.enqueue(
+            MockResponse()
+                .setBody("""{"ReturnCode":"FAIL_ACCESSDENIED"}""")
+                .setResponseCode(200)
         )
+        val module = makeModule()
 
         try {
             module.getOrCreateCustomerId(

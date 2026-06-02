@@ -108,12 +108,17 @@ class PaymentsModuleTest {
                 .setResponseCode(200)
         )
 
-        val baseUrl = mockWebServer.url("/").toString()
-        // Using a custom config that points to the mock server would require Config refactoring.
-        // This test demonstrates the MockWebServer setup is correct.
-        val request = mockWebServer.takeRequest()
-        // Verify that if a request was made, it would return SUCCESS
-        assertNotNull(mockWebServer)
+        val config = Config(etyCode = 123, sessionToken = "token", environment = Environment.TEST,
+            testBaseUrl = mockWebServer.url("/").toString())
+        val httpClient = HttpClient()
+        val session = mockk<SessionModule>()
+        coEvery { session.getSessionToken() } returns "token"
+
+        val module = PaymentsModule(config, httpClient, session)
+        val result = module.process(makeTestIntent())
+
+        assertEquals("SUCCESS", result.returnCode)
+        assertEquals(98765L, result.ticketId)
     }
 
     @Test
